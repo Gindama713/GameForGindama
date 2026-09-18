@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="NeedDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://creature/need_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "warmth"
+label = "保暖"
+max_value = 100.0
+drain_rate = 0.3
+depleted_is_lethal = true

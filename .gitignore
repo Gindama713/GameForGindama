@@ -1,0 +1,6 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# 本项目跑 headless / 窗口模式时，工程目录里会冒出来的临时日志目录
+Godot/

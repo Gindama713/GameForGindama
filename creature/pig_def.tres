@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="CreatureDef" load_steps=17 format=3]
+
+[ext_resource type="Script" path="res://creature/creature_def.gd" id="1_def"]
+[ext_resource type="Script" path="res://creature/components/grid_mover.gd" id="2_mover"]
+[ext_resource type="Script" path="res://creature/components/wander_brain.gd" id="3_brain"]
+[ext_resource type="Texture2D" path="res://pic/pig.png" id="4_tex"]
+[ext_resource type="Script" path="res://creature/components/body.gd" id="7_body"]
+[ext_resource type="Script" path="res://creature/components/needs.gd" id="8_needs"]
+[ext_resource type="Resource" path="res://creature/data/part_head.tres" id="p_head"]
+[ext_resource type="Resource" path="res://creature/data/part_torso.tres" id="p_torso"]
+[ext_resource type="Resource" path="res://creature/data/part_foreleg_l.tres" id="p_foreleg_l"]
+[ext_resource type="Resource" path="res://creature/data/part_foreleg_r.tres" id="p_foreleg_r"]
+[ext_resource type="Resource" path="res://creature/data/part_hindleg_l.tres" id="p_hindleg_l"]
+[ext_resource type="Resource" path="res://creature/data/part_hindleg_r.tres" id="p_hindleg_r"]
+[ext_resource type="Resource" path="res://creature/data/need_food.tres" id="n_food"]
+[ext_resource type="Resource" path="res://creature/data/need_water.tres" id="n_water"]
+[ext_resource type="Resource" path="res://creature/data/need_warmth.tres" id="n_warmth"]
+[ext_resource type="Resource" path="res://creature/data/need_fatigue.tres" id="n_fatigue"]
+
+[resource]
+script = ExtResource("1_def")
+display_name = "猪"
+texture = ExtResource("4_tex")
+component_scripts = Array[Script]([ExtResource("2_mover"), ExtResource("3_brain"), ExtResource("7_body"), ExtResource("8_needs")])
+body_parts = Array[BodyPartDef]([ExtResource("p_head"), ExtResource("p_torso"), ExtResource("p_foreleg_l"), ExtResource("p_foreleg_r"), ExtResource("p_hindleg_l"), ExtResource("p_hindleg_r")])
+active_needs = Array[NeedDef]([ExtResource("n_food"), ExtResource("n_water"), ExtResource("n_warmth"), ExtResource("n_fatigue")])
