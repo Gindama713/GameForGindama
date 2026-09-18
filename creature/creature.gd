@@ -89,17 +89,27 @@ func _log_spawn() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
 		_release_cell()
+		GridManager.remove_corpse(coord, self)   # 尸体节点被清（清屏）时把格子上的尸体也撤走
 
 # ---------------- 点击选取 ----------------
 ## 用 _unhandled_input 而非 _input：被 UI 消费掉的点击（面板/按钮）不会到达这里，
 ## 因此点检视窗不会「穿透」选中窗下的生物。
+## 活体优先：尸体格上站着活体时，点击选中活体；尸体只在格上没有活体时才可被点（验尸）。
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var vp := get_viewport()
 		var world_pos: Vector2 = vp.get_canvas_transform().affine_inverse() * event.position
-		if GridManager.grid.world_to_grid(world_pos) == coord:
+		if GridManager.grid.world_to_grid(world_pos) != coord:
+			return
+		if _alive:
 			EventBus.creature_clicked.emit(self)
-			vp.set_input_as_handled()   # 一次点击只选一个，避免重叠时全部触发
+			vp.set_input_as_handled()
+			return
+		var cell := GridManager.cell_at(coord.x, coord.y)
+		if cell != null and cell.content is Creature and (cell.content as Creature).is_alive():
+			return                              # 活体踩在身上：让活体响应，尸体不打架
+		EventBus.creature_clicked.emit(self)    # 尸体独占格 → 可点击验尸
+		vp.set_input_as_handled()
 
 # ---------------- 组件装配（组合，而非继承） ----------------
 func _build_components() -> void:
@@ -153,7 +163,8 @@ func die() -> void:
 	var why := lethal_reason_text()
 	_alive = false
 	TimeSystem.tick.disconnect(_on_tick)        # 停机机制：把自己从时钟上摘下来
-	_release_cell()                             # 尸体不再占格（否则是看不见的堵路石）
+	_release_cell()                             # 交还占格：活体可以从这格过
+	GridManager.place_corpse(coord, self)       # 尸体**永久留在格上**（不占格，但移动"万不得已"才踩）
 	if _sprite != null and def != null and def.texture != null:
 		_sprite.modulate = DEAD_COLOR            # 有图：调暗
 	queue_redraw()                              # 无图：色块由 _draw 自己变暗
@@ -183,25 +194,22 @@ func can_place_at(c: Vector2i) -> bool:
 		return false
 	return cell.content == null or cell.content == self
 
-## 写入占位。调用前必须已通过 can_place_at()（本函数仍会复核并报错，不静默抢占）。
+## 写入占格。**占格唯一入口 = GridManager.occupy()**（同时维护空格集合）。
 func _place_at(c: Vector2i) -> bool:
 	var cell := GridManager.cell_at(c.x, c.y)
 	if cell == null:
 		push_error("[%s] %s 越界，未占格" % [tag(), c])
 		return false
-	if cell.content != null and cell.content != self:
+	if not GridManager.occupy(c, self):
 		push_error("[%s] %s 已被 %s 占用，未抢占" % [tag(), c, cell.content])
 		return false
-	cell.content = self
 	# grid_to_world 返回格子左上角，加半格才居中
 	position = GridManager.grid.grid_to_world(c) + Vector2(Grid.CELL_SIZE, Grid.CELL_SIZE) * 0.5
 	return true
 
-## 交还所占格子（死亡 / 释放时）
+## 交还所占格子（死亡 / 释放时）。释放唯一入口 = GridManager.release()。
 func _release_cell() -> void:
-	var cell := GridManager.cell_at(coord.x, coord.y)
-	if cell != null and cell.content == self:
-		cell.content = null
+	GridManager.release(coord, self)
 
 ## 移动到相邻格（由移动组件调用）。成功返回 true。
 ## 越界或目标被占 → 报错并原地不动（不会留下 coord 与占格不一致的状态）。
@@ -212,7 +220,10 @@ func move_to(target: Vector2i) -> bool:
 	Log.ev("移动", "%s %s → %s" % [tag(), coord, target])
 	_release_cell()
 	coord = target
-	return _place_at(target)
+	var ok := _place_at(target)
+	if ok:
+		EventBus.creature_moved.emit(self)   # 小地图等表现层重画；将来脚印/噪音也听它
+	return ok
 
 # ---------------- 表现（可选，删掉不影响逻辑） ----------------
 ## 主画面：**有图就用图**（猪 = pic/pig.png 剪影，缩放成一格）；

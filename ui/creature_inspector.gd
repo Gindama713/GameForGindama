@@ -43,6 +43,7 @@ func _ready() -> void:
 	_build()
 	EventBus.creature_clicked.connect(_on_clicked)
 	EventBus.creature_died.connect(_on_creature_died)
+	EventBus.creature_removed.connect(_on_removed)   # 清屏移除 → 关面板（不再靠 is_instance_valid 兜底）
 	TimeSystem.tick.connect(_on_tick)
 	position = Vector2(32, 104)   # 初始位置（左侧；可拖动）
 	hide()
@@ -138,7 +139,12 @@ func _on_title_gui_input(event: InputEvent) -> void:
 		_drag_start_mouse = event.global_position
 		_drag_start_pos = position
 	elif event is InputEventMouseMotion and _dragging:
-		position = _drag_start_pos + (event.global_position - _drag_start_mouse)
+		var new_pos: Vector2 = _drag_start_pos + (event.global_position - _drag_start_mouse)
+		var vp := get_viewport_rect().size
+		# 允许拖出一点，但标题栏永远留在屏幕内（面板不会拖丢找不回来）
+		new_pos.x = clampf(new_pos.x, -size.x + 60.0, vp.x - 60.0)
+		new_pos.y = clampf(new_pos.y, 0.0, vp.y - 40.0)
+		position = new_pos
 
 # ---------------- 选取 ----------------
 func _on_clicked(c: Creature) -> void:
@@ -151,6 +157,11 @@ func _on_clicked(c: Creature) -> void:
 func _on_creature_died(c: Node) -> void:
 	if c == _creature:
 		_rebuild()
+
+## 选中的生物被移除（清屏等非死亡移除）→ 关面板、放掉引用。
+func _on_removed(c: Node) -> void:
+	if c == _creature:
+		_on_close()
 
 func _rebuild() -> void:
 	if _creature == null:

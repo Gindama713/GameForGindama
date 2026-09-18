@@ -11,10 +11,12 @@ const BORDER := Color.WHITE             # 外框：白（和画面里的"白=生
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 8)
-	# 重画时机 = 模拟推进 / 生物生死的瞬间。暂停时小地图也跟着冻结，和模拟一致。
-	TimeSystem.tick.connect(func(_dt: float) -> void: queue_redraw())
+	# 重画时机 = 生物 生成/移动/死亡/被移除 的瞬间，**完全事件驱动**。
+	# 不再订阅 tick：不每帧重绘，暂停也自然冻结（事件本来就不会来）。
 	EventBus.creature_spawned.connect(func(_c: Node) -> void: queue_redraw())
+	EventBus.creature_moved.connect(func(_c: Node) -> void: queue_redraw())
 	EventBus.creature_died.connect(func(_c: Node) -> void: queue_redraw())
+	EventBus.creature_removed.connect(func(_c: Node) -> void: queue_redraw())
 
 func _get_minimum_size() -> Vector2:
 	# 首次布局可能早于 GridManager 就绪（实测会先查一次），没网格就先按 0 报
@@ -28,13 +30,15 @@ func _draw() -> void:
 		return
 	var g := GridManager.grid
 	var s := PX_PER_CELL
-	# 每格 4px：黑=陆地；格子被生物占着 -> 画它的 map_color
+	# 每格 4px：黑=陆地；活体=map_color；尸体=暗灰（永久留在格上，不占格）
 	for y in g.height:
 		for x in g.width:
 			var cell := g.get_cell(Vector2i(x, y))
 			var col := Color.BLACK
 			if cell.content is Creature:
 				col = cell.content.def.map_color
+			elif cell.corpse != null:
+				col = Creature.DEAD_COLOR
 			draw_rect(Rect2(Vector2(x, y) * s + Vector2.ONE * MARGIN, Vector2(s, s)), col)
 	# 外框
 	var full := Vector2(g.width, g.height) * s + Vector2.ONE * (MARGIN * 2)

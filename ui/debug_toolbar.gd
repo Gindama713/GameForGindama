@@ -24,4 +24,5 @@ func _on_clear() -> void:
 		return
 	for c in main.get_children():
 		if c is Creature:
+			EventBus.creature_removed.emit(c)   # 表现层（检视面板/小地图）先收到通知再释放
 			c.queue_free()

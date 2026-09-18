@@ -25,15 +25,10 @@ func _spawn_pig(at: Vector2i) -> Creature:
 	EventBus.creature_spawned.emit(pig)   # 表现层（小地图等）订阅；生成即广播
 	return pig
 
-## 调试工具栏「刷猪」用：在随机空格生成一只猪
+## 调试工具栏「刷猪」用：在随机空格生成一只猪（O(1)，GridManager 维护空格集合）
 func spawn_pig_random() -> void:
-	var free_cells: Array[Vector2i] = []
-	for x in GridManager.grid.width:
-		for y in GridManager.grid.height:
-			var cell := GridManager.cell_at(x, y)
-			if cell != null and cell.content == null:
-				free_cells.append(Vector2i(x, y))
-	if free_cells.is_empty():
+	var c := GridManager.random_free_cell()
+	if c.x < 0:
 		print("没有空格可以刷猪了")
 		return
-	_spawn_pig(free_cells.pick_random())
+	_spawn_pig(c)
