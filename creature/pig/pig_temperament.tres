@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="PersonalityDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://creature/personality_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+generation_mode = 1
+spread = 0.18
+push_from_half = 0.0

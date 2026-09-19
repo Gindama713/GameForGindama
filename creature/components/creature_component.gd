@@ -15,7 +15,7 @@ func setup(host: Node) -> void:
 	creature = host
 
 ## 本组件依赖的其他组件（返回脚本数组）。缺依赖时 Creature 会报错并拒绝装配。
-## 例：WanderBrain 依赖 GridMover，就 return [GridMover]。
+## 例：Brain 依赖 GridMover，就 return [GridMover]。
 func requires() -> Array:
 	return []
 

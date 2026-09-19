@@ -55,6 +55,8 @@ func _validate_resource(res: Resource) -> Array[String]:
 		return _validate_part(res as BodyPartDef)
 	if res is NeedDef:
 		return _validate_need(res as NeedDef)
+	if res is PersonalityDef:
+		return _validate_personality(res as PersonalityDef)
 	return []
 
 func _validate_part(p: BodyPartDef) -> Array[String]:
@@ -73,6 +75,14 @@ func _validate_need(n: NeedDef) -> Array[String]:
 		errs.append("需求 %s 的 max_value 必须 > 0（当前 %.1f）" % [n.id, n.max_value])
 	if n.drain_rate < 0.0:
 		errs.append("需求 %s 的 drain_rate 不能为负（当前 %.1f）" % [n.id, n.drain_rate])
+	return errs
+
+func _validate_personality(p: PersonalityDef) -> Array[String]:
+	var errs: Array[String] = []
+	if p.spread < 0.0:
+		errs.append("性格分布 spread 不能为负（当前 %.2f）" % p.spread)
+	if p.push_from_half < 0.0 or p.push_from_half > 1.0:
+		errs.append("性格分布 push_from_half 需在 0..1（当前 %.2f）" % p.push_from_half)
 	return errs
 
 ## 递归收集 .tres 路径

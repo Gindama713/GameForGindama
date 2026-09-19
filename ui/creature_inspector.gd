@@ -1,7 +1,7 @@
 extends PanelContainer
 
 ## 生物检视悬浮窗（调试 / 也可当游戏内 HUD）。
-##  - 点生物 -> EventBus.creature_clicked -> 显示：名称/坐标/总血/部位/需求
+##  - 点生物 -> EventBus.creature_clicked -> 显示：名称/坐标/总血/部位/需求/性格(6维)+状态
 ##  - 生物死亡 -> EventBus.creature_died -> 切换成**尸体视图**
 ##  - 独立小窗、可拖动（按住标题栏拖）
 ##  - **紧凑网格布局**：部位 3 列 × 2 行、需求 4 列 × 1 行（原来竖着堆 10 行，又窄又高）
@@ -20,6 +20,12 @@ const CELL_BAR_SEGMENTS := 6   # 格子里的像素条段数（短一点，格�
 ## 像素字体是 11px 原生 + antialiasing=0（字体 import 里关掉了），只有 11/22/33 这类整数倍才不糊。
 const CELL_FONT_SIZE := 11     # 格子内容用原生尺寸：信息密集区，小一号才排得下
 
+## 大脑驱动名 → 中文（状态行显示）
+const DRIVE_LABEL := {
+	"wander": "游荡", "social": "合群", "separate": "独行",
+	"rest": "休息", "blocked": "被围", "idle": "发呆",
+}
+
 var _creature: Creature
 var _title_bar: HBoxContainer
 var _name_lbl: Label
@@ -32,8 +38,12 @@ var _needs_section: VBoxContainer      # 活体专属：需求
 var _dead_lbl: Label
 var _parts_grid: GridContainer
 var _needs_grid: GridContainer
+var _personality_grid: GridContainer
+var _personality_section: VBoxContainer
+var _state_lbl: Label
 var _part_rows: Array = []   # {part, bar, status}
 var _need_rows: Array = []   # {need, bar}
+var _trait_rows: Array = []  # {id, bar, value}
 
 var _dragging := false
 var _drag_start_mouse := Vector2.ZERO
@@ -98,6 +108,18 @@ func _build() -> void:
 	_needs_grid.add_theme_constant_override("h_separation", 8)
 	_needs_grid.add_theme_constant_override("v_separation", 3)
 	_needs_section.add_child(_caption_row("需求", _needs_grid))
+
+	# 性格：网格 3 列 × 2 行（6 维）+ 一行状态（当前驱动 / 合群度）
+	_personality_section = VBoxContainer.new()
+	vb.add_child(_personality_section)
+	_personality_grid = GridContainer.new()
+	_personality_grid.name = "PersonalityGrid"   # 便于调试定位
+	_personality_grid.columns = 3
+	_personality_grid.add_theme_constant_override("h_separation", 8)
+	_personality_grid.add_theme_constant_override("v_separation", 3)
+	_personality_section.add_child(_caption_row("性格", _personality_grid))
+	_state_lbl = _small_label("")
+	_personality_section.add_child(_state_lbl)
 
 	var wound := Button.new(); wound.text = "调试：随机致伤"; wound.pressed.connect(_on_random_wound)
 	vb.add_child(wound)
@@ -194,6 +216,19 @@ func _rebuild() -> void:
 	else:
 		var none := Label.new(); none.text = "（无需求数据）"; _needs_grid.add_child(none)
 
+	# 性格格子（6 维：单字标签 + 像素条 + 数值）
+	for child in _personality_grid.get_children():
+		child.queue_free()
+	_trait_rows.clear()
+	var person := _creature.get_component(Personality) as Personality
+	if person != null:
+		for tid in Personality.IDS:
+			var c := _make_cell(Personality.SHORT[tid], true)
+			_personality_grid.add_child(c["root"])
+			_trait_rows.append({"id": tid, "bar": c["bar"], "value": c["status"]})
+	else:
+		var none2 := Label.new(); none2.text = "（无性格数据）"; _personality_grid.add_child(none2)
+
 	_apply_form()
 	_refresh()
 
@@ -205,6 +240,7 @@ func _apply_form() -> void:
 	_dead_lbl.visible = not alive
 	_total_section.visible = alive
 	_needs_section.visible = alive
+	_state_lbl.visible = alive          # 性格 6 维死后保留（稳定特征），只有"当前状态"没意义
 	if not alive:
 		var why := _creature.lethal_reason_text()
 		_dead_lbl.text = "── 已死亡 · 模拟已停止 ──" if why.is_empty() else "── 已死亡（%s）· 模拟已停止 ──" % why
@@ -242,6 +278,18 @@ func _refresh() -> void:
 		for r in _need_rows:
 			var n: Need = r["need"]
 			r["bar"].set_ratio(n.ratio())
+
+	# 性格：6 维数值 + 状态行（当前驱动 / 合群度）
+	var person := _creature.get_component(Personality) as Personality
+	if person != null:
+		for r in _trait_rows:
+			var v := person.get_trait(r["id"])
+			r["bar"].set_ratio(v)
+			r["value"].text = "%.2f" % v
+	var brain := _creature.get_component(Brain) as Brain
+	var drive: String = brain.last_drive if brain != null else "-"
+	var soc: float = person.sociability() if person != null else 0.5
+	_state_lbl.text = "状态 %s · 合群 %.2f" % [DRIVE_LABEL.get(drive, drive), soc]
 
 func _on_random_wound() -> void:
 	if _creature == null:

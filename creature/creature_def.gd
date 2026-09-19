@@ -11,13 +11,15 @@ extends Resource
 @export var component_scripts: Array[Script] = []    # 声明式组合：这只生物挂哪些组件
 @export var body_parts: Array[BodyPartDef] = []      # 部位清单（数据驱动；空 = 无身体系统）
 @export var active_needs: Array[NeedDef] = []        # 激活的需求（数据驱动；空 = 无需求系统）
+@export var personality: PersonalityDef              # 物种脾气分布（数据驱动；空 = 性格全取中性 0.5）
+@export var move_interval: float = 1.0               # 大脑决策间隔基数（秒），物种级（占位值，待调）
 
 ## 定义校验（CDDA 四阶段加载里 check_all 的最小落地）。
 ## 返回问题清单；空数组 = 通过。
 ##
 ## 为什么必须有：这些错以前**全是静默的** ——
 ##   忘了配 is_vital 的物种天生不死；部位/需求 id 重复会悄悄顶掉前一个；
-##   组件依赖缺失只 push_warning，然后运行期静默罢工（WanderBrain 拿不到 GridMover 就什么都不干）。
+##   组件依赖缺失只 push_warning，然后运行期静默罢工（Brain 拿不到 GridMover 就什么都不干）。
 ## 数据错了必须在启动时就大声喊出来。
 func validate() -> Array[String]:
 	var errs: Array[String] = []
@@ -28,6 +30,8 @@ func validate() -> Array[String]:
 	_validate_parts(errs)
 	_validate_needs(errs)
 	_validate_components(errs)
+	if move_interval <= 0.0:
+		errs.append("move_interval 必须 > 0（当前 %.2f；否则大脑每帧都在决策）" % move_interval)
 
 	return errs
 
