@@ -4,3 +4,6 @@
 
 # 本项目跑 headless / 窗口模式时，工程目录里会冒出来的临时日志目录
 Godot/
+
+# 窗口模式跑起来时 NVIDIA 驱动会按 CWD 生成（空目录，纯驱动日志）
+NVIDIA Corporation/
