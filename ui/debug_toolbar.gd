@@ -18,11 +18,10 @@ func _on_spawn() -> void:
 	if main != null and main.has_method("spawn_pig_random"):
 		main.spawn_pig_random()
 
+## 清屏：委托 Main.clear_creatures()。
+## 工具栏**不自己遍历节点树** —— 「生物装在哪个节点下」是 Main 的知识；
+## 以前它遍历 Main 的直接子节点再按 `is Creature` 过滤，一旦生物挪进容器就静默失效。
 func _on_clear() -> void:
 	var main := get_tree().current_scene
-	if main == null:
-		return
-	for c in main.get_children():
-		if c is Creature:
-			EventBus.creature_removed.emit(c)   # 表现层（检视面板/小地图）先收到通知再释放
-			c.queue_free()
+	if main != null and main.has_method("clear_creatures"):
+		main.clear_creatures()

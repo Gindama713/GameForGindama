@@ -53,3 +53,9 @@ func can_move() -> bool:
 		if not comp.allows_movement():
 			return false
 	return true
+
+## 调试自述（生成日志 + 调试器检查器里的 debug/components/grid_mover 行）
+func debug_state() -> String:
+	if not can_move():
+		return "可动=否 可走方向 0"
+	return "可动=是 可走方向 %d" % free_directions().size()

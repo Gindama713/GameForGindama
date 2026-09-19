@@ -12,6 +12,8 @@ script = ExtResource("1")
 [node name="MapRenderer" type="Node2D" parent="."]
 script = ExtResource("4_map")
 
+[node name="Creatures" type="Node2D" parent="."]
+
 [node name="UI" type="CanvasLayer" parent="."]
 
 [node name="DebugToolbar" type="Control" parent="UI"]

@@ -14,6 +14,7 @@ var categories := {
 	"需求": true,
 	"情绪": true,
 	"移动": false,
+	"调试": true,
 }
 
 func ev(category: String, msg: String) -> void:

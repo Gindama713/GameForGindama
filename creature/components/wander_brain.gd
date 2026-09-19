@@ -34,3 +34,7 @@ func tick(dt: float) -> void:
 
 func _reset_timer() -> void:
 	_timer = maxf(step_interval + creature.rng.randf_range(-interval_jitter, interval_jitter), 0.05)
+
+## 调试自述（生成日志 + 调试器检查器里的 debug/components/wander_brain 行）
+func debug_state() -> String:
+	return "下次动作 %.1fs / 间隔 %.1f±%.1f" % [_timer, step_interval, interval_jitter]

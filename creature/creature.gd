@@ -129,6 +129,51 @@ func has_component(script: Script) -> bool:
 func get_components() -> Array:
 	return _components.values()
 
+# ---------------- 调试可见性：把组件状态暴露成只读属性 ----------------
+## 痛点：组件是 RefCounted，**不在场景树里**，运行时在调试器的场景树中根本看不到它们
+## ——「生物在动，但不知道它内部怎么了」。
+##
+## 解法不是把组件改成节点：那要给每只生物 +4 个节点，1500 只就是 6000 个；
+## 官方《Node alternatives》明确说「不需要进场景树的东西用 RefCounted/Resource」。
+## 改成**只读合成属性**：运行中在调试器里选中一只生物，检查器就能实时看到
+## 编号 / 坐标 / 生死 / 每个组件自述的状态（组件照旧只提供 debug_state()，基类不认识它们）。
+func _get_property_list() -> Array[Dictionary]:
+	var props: Array[Dictionary] = []
+	props.append(_debug_prop("debug/id", TYPE_INT))
+	props.append(_debug_prop("debug/coord", TYPE_VECTOR2I))
+	props.append(_debug_prop("debug/alive", TYPE_BOOL))
+	props.append(_debug_prop("debug/tag", TYPE_STRING))
+	for key in _components.keys():
+		props.append(_debug_prop("debug/components/" + String(key).get_file().get_basename(), TYPE_STRING))
+	return props
+
+## 只读合成属性：EDITOR 让它出现在检查器里，READ_ONLY 让它不可改（不写 STORAGE → 不会被存进 .tscn）
+func _debug_prop(name: String, type: int) -> Dictionary:
+	return {
+		"name": name,
+		"type": type,
+		"usage": PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY,
+	}
+
+## 合成属性的取值入口：这些名字不是真实字段，Godot 找不到就会转到这里问。
+func _get(property: StringName) -> Variant:
+	var p := String(property)
+	match p:
+		"debug/id":
+			return id
+		"debug/coord":
+			return coord
+		"debug/alive":
+			return _alive
+		"debug/tag":
+			return tag()
+	if p.begins_with("debug/components/"):
+		var label := p.trim_prefix("debug/components/")
+		for key in _components.keys():
+			if String(key).get_file().get_basename() == label:
+				return (_components[key] as CreatureComponent).debug_state()
+	return null
+
 const DEAD_COLOR := Color(0.32, 0.32, 0.32)
 
 # ---------------- 生死：判定 / 接线 / 执行 ----------------
