@@ -7,8 +7,16 @@ extends Label
 var _last_text: String = ""
 
 func _ready() -> void:
-	# 顶边通栏 + 水平居中：文本变宽也不会偏（不用 MINSIZE，免得改字后不重新居中）
-	set_anchors_preset(Control.PRESET_TOP_WIDE)
+	# 通栏 + 水平/垂直居中。**必须显式写 anchors 与 offsets**：
+	# 实测 `set_anchors_preset()` 会把控件尺寸按当前文本宽度保留（只有 ~163px 宽、贴在左边），
+	# 于是 horizontal_alignment=CENTER 只在那个窄盒子里居中 → 文字跑到左上角。
+	# 把 offset_left / offset_right 归零，控件才真正横跨整个视口、文字落在正中。
+	anchor_left = 0.0
+	anchor_right = 1.0
+	anchor_top = 0.0
+	anchor_bottom = 0.0
+	offset_left = 0.0
+	offset_right = 0.0
 	offset_top = 8.0
 	offset_bottom = 44.0
 	horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

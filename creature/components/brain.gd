@@ -1,14 +1,20 @@
 class_name Brain
 extends CreatureComponent
 
-## 融合式大脑 —— 多个「行为驱动」各出一份 (方向, 权重)，加权融合后挑最贴近的可走方向。
-## 取代原来的 WanderBrain（无条件游荡 → 猪永远在走，没有停的时候）。
+## 融合式大脑（v2，2026-09-19）—— 用「加权随机（轮盘）」在多个行为驱动中挑一个。
+##
+## 为什么改：v1 是「比大小取最大」，结果是**确定性的** —— 高活力猪永远游荡（像发疯）、
+## 低活力猪一到夜里就一直静止（像死掉）。改为轮盘后：**性格只调「概率」，具体选谁随机**，
+## 于是同一只猪也会走走停停、偶尔发呆；不同个体倾向不同（有的爱动、有的爱歇）。
 ##
 ## 驱动（权重全是占位值，跑出来再调）：
-##   Wander   游荡   永远在，权重随「活力」上升
-##   Social   合群   附近有同类时，权重 = 合群度
-##   Separate 独处   附近有同类时，权重 = 1−合群度
-##   Rest     休息   权重 = (1−活力)+(1−疲劳)+夜晚加权；压过其余驱动 → **真的停下不动**（并睡回疲劳）
+##   Wander   游荡   权重随「活力」上升
+##   Social   合群   附近有同类时 = 合群度，朝邻居重心走（凝聚）
+##   Separate 独处   附近有同类时 = 1−合群度，背离最近邻居（分离）
+##   Rest     休息   权重 = (1−活力)+(1−疲劳)+夜晚加权；选中 → 原地不动（并睡回疲劳）
+##   Idle     发呆   权重 = 基线 + (1−活力)；选中 → 原地**短歇**（让「走」不再连续）
+##
+## 时长也不固定：移动类带抖动、发呆是短歇、休息是**一段有上限的睡眠**（会醒，不是永久静止）。
 ##
 ## 【纪律】只通过协议与别人对话：
 ##   要可走方向 → GridMover（不认识它的内部）；要脾气 → Personality；要邻居 → Perception。
@@ -21,9 +27,16 @@ const SOCIAL_WEIGHT := 1.0
 const SEPARATE_WEIGHT := 1.0
 const REST_WEIGHT := 1.2
 const FATIGUE_REST_WEIGHT := 0.8   # 疲劳→休息意愿（减速而非致命，见 need_def.gd 注释）
-const FATIGUE_SLOW_FACTOR := 1.5   # 疲劳→决策间隔放大（越累动得越稀）
-const NIGHT_REST_BONUS := 0.7      # 夜晚→休息加权（大部分猪夜里歇着；够大又不至于全歇）
-const SLEEP_RECOVER_RATE := 0.2    # 休息/睡觉时疲劳回复速率（每分钟；10 小时夜≈回满）
+const IDLE_BASE := 0.35            # 发呆基线（保证「走」有间隙，不至于一直动）
+const IDLE_LOW_ENERGY := 0.6       # 低活力更爱站着发呆
+const NIGHT_REST_BONUS := 1.5      # 夜晚→休息加权（轮盘下≈大部分时间在歇，但会偶尔翻动）
+const FATIGUE_SLOW_FACTOR := 1.5   # 疲劳→移动间隔放大（越累动得越稀）
+const SLEEP_RECOVER_RATE := 0.2    # 休息/睡觉时疲劳回复速率（游戏分钟）
+
+## 一次休息（睡眠）的时长范围（游戏分钟）；到点会醒，不是永久静止
+const REST_MIN := 4.0
+const REST_MAX := 14.0
+const JITTER := 0.35               # 移动间隔的随机抖动比例（步频不规律）
 
 var _timer: float = 0.0
 var last_drive: String = "wander"   # 上一次决策选中了什么（调试/检视面板用）
@@ -62,20 +75,15 @@ func _decide_and_act() -> void:
 	if person != null:
 		energy = person.get_trait("energy")
 		sociability = person.sociability()
-
-	# 疲劳：累了更想歇、更不想动（减速而非死亡，见 need_def.gd 注释）
 	var fatigue_ratio := _fatigue_ratio()
 
-	# --- Rest 休息：低活力 / 高疲劳都想歇；夜里再额外加权 → 大部分猪夜里歇着 ---
+	# --- 各驱动权重：只是「倾向」，最终由加权随机决定 → 性格影响概率、行为随机 ---
+	var wander_w := WANDER_BASE + energy * WANDER_ENERGY
 	var rest_w := (1.0 - energy) * REST_WEIGHT + (1.0 - fatigue_ratio) * FATIGUE_REST_WEIGHT
 	if TimeSystem.is_night():
 		rest_w += NIGHT_REST_BONUS
+	var idle_w := IDLE_BASE + (1.0 - energy) * IDLE_LOW_ENERGY
 
-	# --- Wander 游荡：随机方向，权重随活力 ---
-	var wander_dir := Vector2(GridMover.DIRS[creature.rng.randi_range(0, GridMover.DIRS.size() - 1)])
-	var wander_w := WANDER_BASE + energy * WANDER_ENERGY
-
-	# --- Social / Separate：要有同类邻居才起作用 ---
 	var social_w := 0.0
 	var separate_w := 0.0
 	var social_dir := Vector2.ZERO
@@ -89,18 +97,59 @@ func _decide_and_act() -> void:
 			social_dir = _dir_to_centroid(ns)
 			separate_dir = _dir_from_nearest(ns)
 
-	# 休息压过一切 → 不动（这就是「不再一直走」的机制）
-	if rest_w > 0.0 and rest_w >= maxf(maxf(wander_w, social_w), separate_w):
-		last_drive = "rest"
-		return
+	# --- 加权随机（轮盘）选一个驱动 ---
+	var drives: Array[String] = ["wander", "social", "separate", "rest", "idle"]
+	var weights: Array[float] = [wander_w, social_w, separate_w, rest_w, idle_w]
+	match _roulette(drives, weights):
+		"social":
+			if _step_toward(mover, dirs, social_dir):
+				last_drive = "social"
+				return
+			_wander_step(mover, dirs)      # 无邻居/已重合 → 退化为游荡
+		"separate":
+			if _step_toward(mover, dirs, separate_dir):
+				last_drive = "separate"
+				return
+			_wander_step(mover, dirs)
+		"rest":
+			last_drive = "rest"            # 原地休息（睡觉）
+		"idle":
+			last_drive = "idle"            # 原地发呆（短歇）
+		_:
+			_wander_step(mover, dirs)
 
-	var desired := wander_dir * wander_w + social_dir * social_w + separate_dir * separate_w
+func _wander_step(mover: GridMover, dirs: Array[Vector2i]) -> void:
+	_step_toward(mover, dirs, _rand_dir())
+	last_drive = "wander"
+
+func _rand_dir() -> Vector2:
+	var d: Vector2i = GridMover.DIRS[creature.rng.randi_range(0, GridMover.DIRS.size() - 1)]
+	return Vector2(d)
+
+## 加权随机选一项（轮盘）。权重 ≤0 的项不会被选中。
+func _roulette(drives: Array, weights: Array) -> String:
+	var total := 0.0
+	for w in weights:
+		if float(w) > 0.0:
+			total += float(w)
+	if total <= 0.0:
+		return String(drives[0])
+	var r: float = creature.rng.randf() * total
+	var acc := 0.0
+	for i in drives.size():
+		var w := float(weights[i])
+		if w <= 0.0:
+			continue
+		acc += w
+		if r < acc:
+			return String(drives[i])
+	return String(drives[drives.size() - 1])
+
+## 朝 desired 方向走一格；desired 为零向量时返回 false。
+func _step_toward(mover: GridMover, dirs: Array[Vector2i], desired: Vector2) -> bool:
 	if desired.length_squared() < 0.0001:
-		last_drive = "idle"
-		return
-	var best := _pick_best(desired, dirs)
-	if mover.try_step(best):
-		last_drive = _dominant(wander_w, social_w, separate_w)
+		return false
+	return mover.try_step(_pick_best(desired, dirs))
 
 ## 取与 desired 夹角最小的可走方向（可走方向都是单位轴向量，比点积即可）。
 func _pick_best(desired: Vector2, dirs: Array[Vector2i]) -> Vector2i:
@@ -140,38 +189,39 @@ func _dir_from_nearest(ns: Array) -> Vector2:
 		return Vector2.ZERO
 	return away.normalized()
 
-func _dominant(wander_w: float, social_w: float, separate_w: float) -> String:
-	var m := maxf(maxf(wander_w, social_w), separate_w)
-	if m == wander_w:
-		return "wander"
-	if m == social_w:
-		return "social"
-	return "separate"
-
-## 决策间隔：基数来自物种（CreatureDef.move_interval），随活力缩短；休息后拉长。
+## 决策间隔：移动类带抖动；发呆=短歇；休息=一段（有上限）睡眠；越累移动越慢。
 func _reset_timer() -> void:
 	var base := 1.0
 	if creature.def != null and creature.def.move_interval > 0.0:
 		base = creature.def.move_interval
+
 	var energy := 0.5
 	var person := creature.get_component(Personality) as Personality
 	if person != null:
 		energy = person.get_trait("energy")
-	var mult := 1.6 - energy              # 高活力 → 更频繁
-	if last_drive == "rest":
-		mult *= 2.5                       # 休息要歇久一点
 	var fr := _fatigue_ratio()
-	if fr < 1.0:
-		mult *= 1.0 + (1.0 - fr) * FATIGUE_SLOW_FACTOR   # 越累决策越稀 → 网格上减速
-	var t: float = base * mult + creature.rng.randf_range(-0.2, 0.2)
-	_timer = maxf(t, 0.1)
+
+	var t: float = base
+	match last_drive:
+		"rest":
+			# 一次睡一段（会醒）；越累睡得越久
+			t = creature.rng.randf_range(REST_MIN, REST_MAX) * (1.0 + (1.0 - fr) * 0.5)
+		"idle":
+			t = base * creature.rng.randf_range(0.4, 3.0)
+		"blocked":
+			t = base * 0.5
+		_:
+			# 移动类：活力高更频繁；疲劳低更慢；再加抖动 → 步频不规律
+			t = base * (1.6 - energy) * creature.rng.randf_range(1.0 - JITTER, 1.0 + JITTER)
+			if fr < 1.0:
+				t *= 1.0 + (1.0 - fr) * FATIGUE_SLOW_FACTOR
+	_timer = maxf(t, 0.15)
 
 ## 调试自述（生成日志 + 调试器检查器里的 debug/components/brain 行）
 func debug_state() -> String:
 	return "上次=%s 下次 %.1fs" % [last_drive, _timer]
 
 ## 疲劳满足度（1=精神饱满，0=精疲力竭）。无 Needs 组件 / 无 fatigue 需求 → 返回 1.0（不影响行为）。
-## 此处只读不写：将来若加「睡觉恢复疲劳」，让 rest 状态调用 Needs.restore("fatigue", …) 即可，本函数不动。
 func _fatigue_ratio() -> float:
 	var needs_comp := creature.get_component(Needs) as Needs
 	if needs_comp == null:
