@@ -3,12 +3,12 @@
 importer="font_data_dynamic"
 type="FontFile"
 uid="uid://brdupvkqyxs8u"
-path="res://.godot/imported/HYPixel11pxU-2.ttf-bc6a8f7349270b4efe23060d817b8a33.fontdata"
+path="res://.godot/imported/HYPixel11pxU-2.ttf-cbb16575cb19b423b60bf1912303253c.fontdata"
 
 [deps]
 
-source_file="res://ui/fonts/HYPixel11pxU-2.ttf"
-dest_files=["res://.godot/imported/HYPixel11pxU-2.ttf-bc6a8f7349270b4efe23060d817b8a33.fontdata"]
+source_file="res://assets/fonts/HYPixel11pxU-2.ttf"
+dest_files=["res://.godot/imported/HYPixel11pxU-2.ttf-cbb16575cb19b423b60bf1912303253c.fontdata"]
 
 [params]
 

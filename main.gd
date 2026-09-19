@@ -3,7 +3,7 @@ extends Node2D
 ## 网格逻辑在 GridManager（Autoload），时钟在 TimeSystem（Autoload）。
 ## 本文件只做两件事：生成生物 / 清空生物 —— 都通过 $Creatures 容器，不散落各处。
 
-const PIG_SCENE := preload("res://creature/pig.tscn")
+const PIG_SCENE := preload("res://creature/pig/pig.tscn")
 
 ## 场上所有生物的容器节点（场景树里生物的「区」）。
 ## 为什么不让生物直接挂 Main：那样它们会和 MapRenderer、UI 平级混着，

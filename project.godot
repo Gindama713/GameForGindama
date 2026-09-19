@@ -17,11 +17,11 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-GridManager="*res://grid_manager.gd"
-TimeSystem="*res://time_system.gd"
-EventBus="*res://event_bus.gd"
-Log="*res://log.gd"
-DefValidator="*res://def_validator.gd"
+GridManager="*res://common/grid/grid_manager.gd"
+TimeSystem="*res://common/time_system.gd"
+EventBus="*res://common/event_bus.gd"
+Log="*res://common/log.gd"
+DefValidator="*res://common/def_validator.gd"
 
 [display]
 

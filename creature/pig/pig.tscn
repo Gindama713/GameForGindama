@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://creature/creature.gd" id="1_creature"]
-[ext_resource type="Resource" path="res://creature/pig_def.tres" id="2_def"]
+[ext_resource type="Resource" path="res://creature/pig/pig_def.tres" id="2_def"]
 
 [node name="Pig" type="Node2D"]
 script = ExtResource("1_creature")
