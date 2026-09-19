@@ -10,11 +10,15 @@ extends Node
 ## 【纪律】Cell.content 是占格的唯一事实来源；`_free` 是它的**派生缓存**，
 ## 只允许被 occupy()/release() 这两个入口维护 —— 绝不绕过入口直接写 content。
 
+## 网格尺寸的**唯一来源**（Grid 自己不再给默认值，避免两处各写一份 40×24）
+const WIDTH := 40
+const HEIGHT := 24
+
 var grid: Grid
 var _free: Dictionary = {}   # Vector2i -> true（空格集合，派生缓存）
 
 func _ready():
-	grid = Grid.new(40, 24)
+	grid = Grid.new(WIDTH, HEIGHT)
 	for c in grid.cells.keys():
 		_free[c] = true
 

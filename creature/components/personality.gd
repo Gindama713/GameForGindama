@@ -12,10 +12,6 @@ extends CreatureComponent
 ## 不写死「猪的类型」——只给 6 个数；行为差异由 Brain 按权重竞争**涌现**出来。
 
 const IDS: Array[String] = ["aggression", "bravery", "dominance", "energy", "nervous", "sympathy"]
-const LABELS := {
-	"aggression": "攻击性", "bravery": "勇气", "dominance": "强势性",
-	"energy": "活力", "nervous": "焦虑", "sympathy": "同情心",
-}
 ## UI 用的单字标签（检视面板 6 格排得下）
 const SHORT := {
 	"aggression": "攻", "bravery": "勇", "dominance": "强",

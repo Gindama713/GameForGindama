@@ -57,9 +57,3 @@ func debug_state() -> String:
 ## 每帧推进；dt 来自 TimeSystem（已含暂停 / 倍速）。
 func tick(_dt: float) -> void:
 	pass
-
-func save_data() -> Dictionary:
-	return {}
-
-func load_data(_data: Dictionary) -> void:
-	pass

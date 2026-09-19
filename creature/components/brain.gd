@@ -32,6 +32,7 @@ const IDLE_LOW_ENERGY := 0.6       # 低活力更爱站着发呆
 const NIGHT_REST_BONUS := 3.0      # 夜晚→休息加权（远大于白天 → 夜里基本都在睡）
 const FATIGUE_SLOW_FACTOR := 1.5   # 疲劳→移动间隔放大（越累动得越稀）
 const SLEEP_RECOVER_RATE := 0.2    # 休息/睡觉时疲劳回复速率（游戏分钟）
+const FATIGUE_ID := "fatigue"      # 用哪个需求当「疲劳」—— Brain 唯一需要的需求 id（别再散写字符串）
 
 ## 休息时长（游戏分钟）：白天是「短歇」、夜里是「长睡」（用户 2026-09-19 拍板「拉开昼夜反差」）
 const REST_DAY_MIN := 1.5
@@ -231,7 +232,7 @@ func _fatigue_ratio() -> float:
 	var needs_comp := creature.get_component(Needs) as Needs
 	if needs_comp == null:
 		return 1.0
-	var fn := needs_comp.need_by_id("fatigue")
+	var fn := needs_comp.need_by_id(FATIGUE_ID)
 	if fn == null:
 		return 1.0
 	return fn.ratio()
@@ -244,4 +245,4 @@ func _recover_while_resting(dt: float) -> void:
 	var needs_comp := creature.get_component(Needs) as Needs
 	if needs_comp == null:
 		return
-	needs_comp.restore("fatigue", SLEEP_RECOVER_RATE * dt)
+	needs_comp.restore(FATIGUE_ID, SLEEP_RECOVER_RATE * dt)

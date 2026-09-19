@@ -296,9 +296,7 @@ func _on_random_wound() -> void:
 		return
 	var body := _creature.get_component(Body) as Body
 	if body != null:
-		var p := body.random_wound()
-		if p != null:
-			print("调试致伤：%s 的 %s，hp=%.1f 出血=%.1f" % [(_creature.def.display_name if _creature.def != null else "?"), p.def.label, p.hp, p.bleeding])
+		body.random_wound()   # 日志由 Body 自己打（"受伤" 分类），UI 不重复
 	_refresh()
 
 func _on_close() -> void:

@@ -10,7 +10,7 @@ var width: int
 var height: int
 var cells: Dictionary = {}   # key: Vector2i, value: Cell
 
-func _init(p_width := 40, p_height := 24):
+func _init(p_width: int, p_height: int):
 	width = p_width
 	height = p_height
 	# 预先把每一格都造出来，保证 (0,0) (1,0) ... 在代码里真实存在
@@ -22,9 +22,6 @@ func _init(p_width := 40, p_height := 24):
 func in_bounds(coord: Vector2i) -> bool:
 	return coord.x >= 0 and coord.y >= 0 and coord.x < width and coord.y < height
 
-func has_cell(coord: Vector2i) -> bool:
-	return cells.has(coord)
-
 func get_cell(coord: Vector2i) -> Cell:
 	return cells.get(coord)
 
@@ -33,11 +30,6 @@ func grid_to_world(coord: Vector2i) -> Vector2:
 
 func world_to_grid(pos: Vector2) -> Vector2i:
 	return Vector2i((pos / CELL_SIZE).floor())
-
-# 调试用：遍历所有格执行回调
-func for_each_cell(callback: Callable) -> void:
-	for cell in cells.values():
-		callback.call(cell)
 
 class Cell:
 	var coord: Vector2i
