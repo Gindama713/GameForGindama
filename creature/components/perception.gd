@@ -34,6 +34,8 @@ func neighbors() -> Array:
 			var cr := other as Creature
 			if cr == null or not cr.is_alive():
 				continue
+			if cr.is_concealed():
+				continue          # 藏进高草里的同类看不见 -> 不算邻居（隐蔽组件提供事实）
 			if cr.def == creature.def:
 				out.append(cr)
 	return out

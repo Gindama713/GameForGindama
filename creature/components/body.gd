@@ -35,7 +35,12 @@ func tick(dt: float) -> void:
 func hurt(part: BodyPart, damage: float, bleed: float = 0.0) -> void:
 	if part == null or damage <= 0.0:
 		return
-	part.apply_damage(damage)
+	# 年龄身体素质：幼崽/老年体弱 → 同样的打击掉更多血（Aging.damage_multiplier）
+	var mult := 1.0
+	var ag := creature.get_component(Aging) as Aging
+	if ag != null:
+		mult = ag.damage_multiplier()
+	part.apply_damage(damage * mult)
 	if bleed > 0.0:
 		part.add_bleeding(bleed)
 	_note(part)
@@ -43,12 +48,12 @@ func hurt(part: BodyPart, damage: float, bleed: float = 0.0) -> void:
 ## 部位跨阈值时打日志（去重，不刷屏）
 func _note(part: BodyPart) -> void:
 	if part.hp <= 0.0:
-		if not part._down_logged:
-			part._down_logged = true
+		if not part.down_logged():
+			part.mark_down_logged()
 			Log.ev("受伤", "%s %s 失能 (0/%.0f)" % [creature.tag(), part.def.label, part.def.max_hp])
 		return
-	if not part._half_logged and part.ratio() < 0.5:
-		part._half_logged = true
+	if not part.half_logged() and part.ratio() < 0.5:
+		part.mark_half_logged()
 		var cat := "失血" if part.bleeding > 0.0 else "受伤"
 		Log.ev(cat, "%s %s 掉到 50%% 以下 (%.0f/%.0f)" % [creature.tag(), part.def.label, part.hp, part.def.max_hp])
 

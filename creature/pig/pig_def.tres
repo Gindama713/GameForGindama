@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="CreatureDef" load_steps=20 format=3]
+[gd_resource type="Resource" script_class="CreatureDef" load_steps=26 format=3]
 
 [ext_resource type="Script" path="res://creature/creature_def.gd" id="1_def"]
 [ext_resource type="Script" path="res://creature/components/grid_mover.gd" id="2_mover"]
@@ -8,6 +8,12 @@
 [ext_resource type="Script" path="res://creature/components/needs.gd" id="8_needs"]
 [ext_resource type="Script" path="res://creature/components/personality.gd" id="9_persona"]
 [ext_resource type="Script" path="res://creature/components/perception.gd" id="10_perc"]
+[ext_resource type="Script" path="res://creature/components/concealment.gd" id="11_conceal"]
+[ext_resource type="Script" path="res://creature/components/grazing.gd" id="12_graze"]
+[ext_resource type="Script" path="res://creature/components/aging.gd" id="13_aging"]
+[ext_resource type="Script" path="res://creature/components/lineage.gd" id="14_lineage"]
+[ext_resource type="Script" path="res://creature/components/reproduction.gd" id="15_repro"]
+[ext_resource type="Resource" path="res://creature/pig/pig_life.tres" id="t_life"]
 [ext_resource type="Resource" path="res://creature/pig/pig_temperament.tres" id="t_temp"]
 [ext_resource type="Resource" path="res://creature/pig/data/part_head.tres" id="p_head"]
 [ext_resource type="Resource" path="res://creature/pig/data/part_torso.tres" id="p_torso"]
@@ -25,7 +31,8 @@ script = ExtResource("1_def")
 display_name = "猪"
 texture = ExtResource("4_tex")
 personality = ExtResource("t_temp")
+life = ExtResource("t_life")
 move_interval = 1.0
-component_scripts = Array[Script]([ExtResource("2_mover"), ExtResource("3_brain"), ExtResource("7_body"), ExtResource("8_needs"), ExtResource("9_persona"), ExtResource("10_perc")])
+component_scripts = Array[Script]([ExtResource("2_mover"), ExtResource("3_brain"), ExtResource("7_body"), ExtResource("8_needs"), ExtResource("9_persona"), ExtResource("10_perc"), ExtResource("11_conceal"), ExtResource("12_graze"), ExtResource("13_aging"), ExtResource("14_lineage"), ExtResource("15_repro")])
 body_parts = Array[BodyPartDef]([ExtResource("p_head"), ExtResource("p_torso"), ExtResource("p_foreleg_l"), ExtResource("p_foreleg_r"), ExtResource("p_hindleg_l"), ExtResource("p_hindleg_r")])
 active_needs = Array[NeedDef]([ExtResource("n_food"), ExtResource("n_water"), ExtResource("n_warmth"), ExtResource("n_fatigue")])

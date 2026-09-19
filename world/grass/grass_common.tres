@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="GrassDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://world/grass/grass_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+display_name = "牧草"
+max_bites = 4
+edible_min_bites = 1
+recover_per_bite_min = 60.0
+depleted_extra_penalty = 1.5
+spread_interval_min = 120.0
+spread_chance = 0.2
+spread_radius = 1
+seed_bites = 1
+food_per_bite = 5.0
+water_per_bite = 2.0

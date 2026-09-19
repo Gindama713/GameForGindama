@@ -11,18 +11,20 @@ extends Node
 ##   DefValidator（本文件）—— 启动期扫**全部**定义，连没被生成的物种也查。
 ##   Creature._ready()     —— 生成时再查一次，校验没通过就直接拒绝生成。
 
-const SCAN_ROOT := "res://creature"
+const SCAN_ROOTS: Array[String] = ["res://creature", "res://world/grass"]
 
 func _ready() -> void:
 	validate_all()
 
 ## 扫描并校验全部定义。返回问题条数（0 = 全过）。也可被调试工具手动调用。
 func validate_all() -> int:
-	var paths := _collect_tres(SCAN_ROOT)
+	var paths: Array[String] = []
+	for root in SCAN_ROOTS:
+		paths.append_array(_collect_tres(root))
 	if paths.is_empty():
 		# 扫描本身失效时必须喊出来。否则「0 条问题」和「根本没查到东西」长得一模一样，
 		# 比不校验更危险 —— 会让人误以为数据已经过关。
-		push_error("[定义校验] 在 %s 下没扫到任何 .tres，校验实际没生效，请检查扫描路径" % SCAN_ROOT)
+		push_error("[定义校验] 在 %s 下没扫到任何 .tres，校验实际没生效，请检查扫描路径" % ", ".join(SCAN_ROOTS))
 		return -1
 
 	var problems := 0
@@ -57,6 +59,10 @@ func _validate_resource(res: Resource) -> Array[String]:
 		return _validate_need(res as NeedDef)
 	if res is PersonalityDef:
 		return _validate_personality(res as PersonalityDef)
+	if res is GrassDef:
+		return (res as GrassDef).validate()
+	if res is LifeDef:
+		return (res as LifeDef).validate()
 	return []
 
 func _validate_part(p: BodyPartDef) -> Array[String]:

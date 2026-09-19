@@ -20,7 +20,6 @@ var id: int = 0
 ## 个体随机源。用它代替全局 randf_range/randi —— 同一颗种子能复现整场模拟，
 ## 这是存档/回放能对上的前提。存档直接存 rng.seed 即可复现。
 var rng := RandomNumberGenerator.new()
-static var _world_seed: int = 20260918
 static var _seed_offset: int = 0
 
 var _components: Dictionary = {}   # 脚本路径(String) -> 组件实例
@@ -29,8 +28,9 @@ var _sprite: Sprite2D
 func _ready() -> void:
 	id = _next_id
 	_next_id += 1
-	rng.seed = _world_seed + _seed_offset
+	rng.seed = WorldSeed.value + _seed_offset
 	_seed_offset += 1
+	FamilyRegistry.register(self)      # 家族注册表：让 Lineage 的 id 能解析到活体
 
 	if def == null:
 		_fail_init("未设置 def")
@@ -49,6 +49,7 @@ func _ready() -> void:
 	_build_components()
 	_render()
 	_place_at(coord)
+	_apply_appearance()                 # 生成时就可能站在高草里 -> 立刻应用"看不见"
 	TimeSystem.tick.connect(_on_tick)   # 时间统一来自 TimeSystem；对象释放后连接自动断
 	_log_spawn()
 
@@ -62,6 +63,14 @@ func _fail_init(reason: String) -> void:
 ## 还活着吗（外部只读入口）
 func is_alive() -> bool:
 	return _alive
+
+## 宿主当前是否被地形藏起来（如站在高草丛里）。
+## 与 is_dead_state() 同构：基类只**汇总**各组件的事实，不认识 Concealment 这个具体组件。
+func is_concealed() -> bool:
+	for comp in _components.values():
+		if comp.is_concealed():
+			return true
+	return false
 
 ## 显示名（带编号），日志用
 func tag() -> String:
@@ -88,6 +97,7 @@ func _log_spawn() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
+		FamilyRegistry.unregister(self)   # 死/清屏后从家族表摘除 → 亲缘解析为 null（"已故"）
 		_release_cell()
 		GridManager.remove_corpse(coord, self)   # 尸体节点被清（清屏）时把格子上的尸体也撤走
 
@@ -227,6 +237,7 @@ func check_dead_state() -> void:
 func _on_tick(dt: float) -> void:
 	for comp in _components.values():
 		comp.tick(dt)
+	_refresh_growth_scale()
 	check_dead_state()
 
 # ---------------- 网格占位 ----------------
@@ -267,6 +278,7 @@ func move_to(target: Vector2i) -> bool:
 	coord = target
 	var ok := _place_at(target)
 	if ok:
+		_apply_appearance()                  # 换了格子 -> 地形可能不同 -> 重新判定隐蔽
 		EventBus.creature_moved.emit(self)   # 小地图等表现层重画；将来脚印/噪音也听它
 	return ok
 
@@ -276,15 +288,40 @@ func move_to(target: Vector2i) -> bool:
 ## 小地图（Minimap）不看图，一律用 `def.map_color` 的色点。
 const BODY_SIZE := 20.0   # 兜底色块边长（格子 32px，留边显"棋子"感）
 
+## 依据「是否隐蔽」刷新表现。隐蔽 = **完全看不见**（用户拍板 2026-09-19）：
+##   有图 -> 隐藏 Sprite2D；无图 -> _draw() 提前 return 不画兜底色块。
+## 只在「生成」与「移动」两个时机调用 —— 地形只在移动时变，不必每帧重算。
+func _apply_appearance() -> void:
+	var hidden := is_concealed()
+	if _sprite != null:
+		_sprite.visible = not hidden
+	queue_redraw()
+
 func _render() -> void:
 	if _sprite == null or def == null or def.texture == null:
 		queue_redraw()          # 走 _draw 的色块兜底
 		return
 	_sprite.texture = def.texture
 	var k := float(Grid.CELL_SIZE) / float(def.texture.get_width())
-	_sprite.scale = Vector2(k, k)
+	_sprite.scale = Vector2(k, k) * _aggregate_scale()
+
+## 各组件 visual_scale 相乘（协议聚合，基类不认识具体组件；默认全 1.0 → 不变）。
+func _aggregate_scale() -> float:
+	var s := 1.0
+	for comp in _components.values():
+		s *= comp.visual_scale()
+	return s
+
+## 成长是连续的：每 tick 轻量刷新一次精灵缩放（只在有图时；一次乘法+赋值，很便宜）。
+func _refresh_growth_scale() -> void:
+	if _sprite == null or def == null or def.texture == null:
+		return
+	var k := float(Grid.CELL_SIZE) / float(def.texture.get_width())
+	_sprite.scale = Vector2(k, k) * _aggregate_scale()
 
 func _draw() -> void:
+	if is_concealed():
+		return                  # 藏进高草：连兜底色块也不画（完全看不见）
 	if def == null or (_sprite != null and def.texture != null):
 		return                  # 有图在显示，不画兜底块
 	var col: Color = def.map_color if _alive else DEAD_COLOR

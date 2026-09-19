@@ -1,10 +1,12 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://bxnshl7gj73g7"]
 
-[ext_resource type="Script" path="res://creature/creature.gd" id="1_creature"]
+[ext_resource type="Script" uid="uid://3y56d8j8cpp5" path="res://creature/creature.gd" id="1_creature"]
 [ext_resource type="Resource" path="res://creature/pig/pig_def.tres" id="2_def"]
+[ext_resource type="Texture2D" uid="uid://dcxnj30sp2y5x" path="res://creature/pig/art/pig.png" id="3_2dsfg"]
 
-[node name="Pig" type="Node2D"]
+[node name="Pig" type="Node2D" unique_id=248683147]
 script = ExtResource("1_creature")
 def = ExtResource("2_def")
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=2127617631]
+texture = ExtResource("3_2dsfg")

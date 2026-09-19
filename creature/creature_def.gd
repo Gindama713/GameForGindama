@@ -12,6 +12,7 @@ extends Resource
 @export var body_parts: Array[BodyPartDef] = []      # 部位清单（数据驱动；空 = 无身体系统）
 @export var active_needs: Array[NeedDef] = []        # 激活的需求（数据驱动；空 = 无需求系统）
 @export var personality: PersonalityDef              # 物种脾气分布（数据驱动；空 = 性格全取中性 0.5）
+@export var life: LifeDef                            # 物种"一生"（年龄/成长/性别/繁殖）；空 = 不启用这套（向后兼容）
 @export var move_interval: float = 1.0               # 大脑决策间隔基数（秒），物种级（占位值，待调）
 
 ## 定义校验（CDDA 四阶段加载里 check_all 的最小落地）。
@@ -30,6 +31,8 @@ func validate() -> Array[String]:
 	_validate_parts(errs)
 	_validate_needs(errs)
 	_validate_components(errs)
+	if life != null:
+		errs.append_array(life.validate())
 	if move_interval <= 0.0:
 		errs.append("move_interval 必须 > 0（当前 %.2f；否则大脑每帧都在决策）" % move_interval)
 

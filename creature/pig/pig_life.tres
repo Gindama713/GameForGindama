@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="LifeDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://creature/life_def.gd" id="1_life"]
+
+[resource]
+script = ExtResource("1_life")
+lifespan_min = 8640.0
+mature_ratio = 0.2
+elder_ratio = 0.75
+size_baby = 0.25
+size_elder = 0.9
+variance = 0.15
+male_ratio = 0.5
+breed_cooldown_min = 2400.0
+litter_min = 1
+litter_max = 3
+breed_food_min = 0.6
+breed_water_min = 0.5
+max_population = 200

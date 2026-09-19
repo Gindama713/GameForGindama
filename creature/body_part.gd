@@ -38,3 +38,16 @@ func status_text() -> String:
 	if bleeding > 0.0:
 		return "出血"
 	return "正常"
+
+# ---- 日志去重标记的访问器（Body 用；也在本类内被读写，消除"声明未使用"警告）----
+func half_logged() -> bool:
+	return _half_logged
+
+func mark_half_logged() -> void:
+	_half_logged = true
+
+func down_logged() -> bool:
+	return _down_logged
+
+func mark_down_logged() -> void:
+	_down_logged = true

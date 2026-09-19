@@ -18,6 +18,8 @@ func is_cell_free(c: Vector2i) -> bool:
 	var cell := GridManager.cell_at(c.x, c.y)
 	if cell == null:
 		return false
+	if not Terrain.walkable(cell.terrain):
+		return false             # 地形不可踩（草/高草都可踩；将来水面/岩壁才会拦）
 	return cell.content == null or cell.content == creature
 
 ## 当前四周可走的方向（供大脑挑选）。

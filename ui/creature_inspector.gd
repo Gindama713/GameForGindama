@@ -24,6 +24,7 @@ const CELL_FONT_SIZE := 11     # 格子内容用原生尺寸：信息密集区�
 const DRIVE_LABEL := {
 	"wander": "游荡", "social": "合群", "separate": "独行",
 	"rest": "休息", "blocked": "被围", "idle": "发呆",
+	"feed": "觅食", "cling": "跟妈",
 }
 
 var _creature: Creature
@@ -48,6 +49,7 @@ var _trait_rows: Array = []  # {id, bar, value}
 var _dragging := false
 var _drag_start_mouse := Vector2.ZERO
 var _drag_start_pos := Vector2.ZERO
+var _tree: FamilyTree = null
 
 func _ready() -> void:
 	_build()
@@ -56,6 +58,8 @@ func _ready() -> void:
 	EventBus.creature_removed.connect(_on_removed)   # 清屏移除 → 关面板（不再靠 is_instance_valid 兜底）
 	TimeSystem.tick.connect(_on_tick)
 	position = Vector2(32, 104)   # 初始位置（左侧；可拖动）
+	# 族谱树**懒创建**（点「族谱」时才 new+add_child）：_ready 里 add_child 会因
+	# "Parent node is busy setting up children" 失败，故不在这里建。
 	hide()
 
 func _build() -> void:
@@ -123,6 +127,11 @@ func _build() -> void:
 
 	var wound := Button.new(); wound.text = "调试：随机致伤"; wound.pressed.connect(_on_random_wound)
 	vb.add_child(wound)
+
+	# 家族：只留一个「族谱」按钮（用户要求删掉父/母/配偶，族谱树里本来就能看全）
+	var fam := HBoxContainer.new(); fam.add_theme_constant_override("separation", 6)
+	vb.add_child(fam)
+	var b_tree := Button.new(); b_tree.text = "族谱"; b_tree.pressed.connect(_on_open_tree); fam.add_child(b_tree)
 
 ## 小标题 + 网格横向并排（原来标题独占一行，白白多两行高度）
 func _caption_row(title_text: String, grid: GridContainer) -> HBoxContainer:
@@ -302,3 +311,19 @@ func _on_random_wound() -> void:
 func _on_close() -> void:
 	hide()
 	_creature = null
+
+# ---------------- 族谱树入口（唯一按钮） ----------------
+func _on_open_tree() -> void:
+	if _creature == null or not is_instance_valid(_creature):
+		Log.ev("调试", "族谱：请先点选一只猪")
+		return
+	if _tree == null:
+		_tree = FamilyTree.new()
+		if get_parent() != null:
+			get_parent().add_child(_tree)
+	# 居中显示 + 置顶，保证一定看得见
+	var vp := get_viewport()
+	if vp != null:
+		var vs := vp.get_visible_rect().size
+		_tree.position = Vector2(maxf((vs.x - 560) * 0.5, 8), maxf((vs.y - 480) * 0.5, 8))
+	_tree.open(_creature)

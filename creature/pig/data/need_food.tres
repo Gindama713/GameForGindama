@@ -7,5 +7,5 @@ script = ExtResource("1")
 id = "food"
 label = "饥饿"
 max_value = 100.0
-drain_rate = 0.01736
+drain_rate = 0.05
 depleted_is_lethal = true

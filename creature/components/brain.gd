@@ -33,6 +33,8 @@ const NIGHT_REST_BONUS := 3.0      # 夜晚→休息加权（远大于白天 →
 const FATIGUE_SLOW_FACTOR := 1.5   # 疲劳→移动间隔放大（越累动得越稀）
 const SLEEP_RECOVER_RATE := 0.2    # 休息/睡觉时疲劳回复速率（游戏分钟）
 const FATIGUE_ID := "fatigue"      # 用哪个需求当「疲劳」—— Brain 唯一需要的需求 id（别再散写字符串）
+const FEED_GAIN := 4.0             # 觅食驱动权重 = 饥饿度(0..1) × FEED_GAIN（饿极了≈4，压过白天的其它驱动）[占位]
+const CLING_WEIGHT := 3.0          # 幼崽"跟妈"驱动权重（< 饿极了的 feed≈4，故很饿会先去吃再回妈身边）[占位]
 
 ## 休息时长（游戏分钟）：白天是「短歇」、夜里是「长睡」（用户 2026-09-19 拍板「拉开昼夜反差」）
 const REST_DAY_MIN := 1.5
@@ -100,10 +102,44 @@ func _decide_and_act() -> void:
 			social_dir = _dir_to_centroid(ns)
 			separate_dir = _dir_from_nearest(ns)
 
+	# 觅食（可选组件 Grazing；没有就不产生 feed 驱动）
+	var feed_w := 0.0
+	var feed_dir := Vector2.ZERO
+	var graze := creature.get_component(Grazing) as Grazing
+	if graze != null:
+		var hw := graze.hunger_weight()              # 先算饥饿度（便宜）
+		if hw > 0.0 and graze.has_nearby_forage():   # 饿了才费钱去扫草格
+			feed_w = hw * FEED_GAIN
+			feed_dir = graze.forage_dir()
+
+	# 跟妈（cling）：仅**幼崽**且母亲活着、离得≥2格时高权重朝妈走；挨着妈就松散跟随（不强制）
+	var cling_w := 0.0
+	var cling_dir := Vector2.ZERO
+	var ag := creature.get_component(Aging) as Aging
+	var lin := creature.get_component(Lineage) as Lineage
+	if ag != null and lin != null and ag.stage() == Aging.Stage.JUVENILE:
+		var mom := lin.mother()
+		if mom != null and mom.is_alive():
+			var d: Vector2i = mom.coord - creature.coord
+			if float(d.length()) >= 2.0:
+				cling_w = CLING_WEIGHT
+				cling_dir = Vector2(d).normalized()
+
 	# --- 加权随机（轮盘）选一个驱动 ---
-	var drives: Array[String] = ["wander", "social", "separate", "rest", "idle"]
-	var weights: Array[float] = [wander_w, social_w, separate_w, rest_w, idle_w]
+	var drives: Array[String] = ["wander", "social", "separate", "rest", "idle", "feed", "cling"]
+	var weights: Array[float] = [wander_w, social_w, separate_w, rest_w, idle_w, feed_w, cling_w]
 	match _roulette(drives, weights):
+		"cling":
+			_step_toward(mover, dirs, cling_dir)   # 朝妈走一步（走不动/已在身边=站着陪妈）
+			last_drive = "cling"
+		"feed":
+			# 已站在可食草上 → 站着（Grazing 自会按时啃）；否则朝草走一步
+			if GrassField.is_edible(creature.coord):
+				last_drive = "feed"
+			elif not _step_toward(mover, dirs, feed_dir):
+				_wander_step(mover, dirs)   # 走不动/已重合 → 退化游荡（下次再试）
+			else:
+				last_drive = "feed"
 		"social":
 			if _step_toward(mover, dirs, social_dir):
 				last_drive = "social"
@@ -197,6 +233,9 @@ func _reset_timer() -> void:
 	var base := 1.0
 	if creature.def != null and creature.def.move_interval > 0.0:
 		base = creature.def.move_interval
+	var aging := creature.get_component(Aging) as Aging
+	if aging != null:
+		base *= aging.speed_factor()      # 幼崽/老年决策更慢（年龄影响行为节奏）
 
 	var energy := 0.5
 	var person := creature.get_component(Personality) as Personality

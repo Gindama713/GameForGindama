@@ -31,7 +31,24 @@ func setup(host: Node) -> void:
 	_generate()
 
 func get_trait(id: String) -> float:
+	# 读时叠加"年龄偏移"（幼崽/老年性格不同）；基础基因值见 base_trait
+	var ag := creature.get_component(Aging) as Aging
+	var shift := ag.trait_shift(id) if ag != null else 0.0
+	return clampf(base_trait(id) + shift, 0.0, 1.0)
+
+## 纯基因值（不含年龄偏移）—— 遗传/繁殖用这个，避免把"年龄性格"传给后代。
+func base_trait(id: String) -> float:
 	return float(values.get(id, 0.5))
+
+## 遗传：性格 = 父母**基因值**均值 ± 小抖动（用宿主 rng，可复现）。让"家族相像"看得见。
+## 由繁殖出生时（Main._spawn_offspring）调用，覆盖 setup 的纯随机结果。
+func inherit(a: Personality, b: Personality) -> void:
+	const JITTER := 0.10
+	for id in IDS:
+		var va := a.base_trait(id) if a != null else 0.5
+		var vb := b.base_trait(id) if b != null else 0.5
+		var mean := (va + vb) * 0.5
+		values[id] = clampf(mean + creature.rng.randf_range(-JITTER, JITTER), 0.0, 1.0)
 
 ## 合群度（派生量，0..1）：越高越爱扎堆，越低越独行。
 ##   sociability = 同情 + 焦虑 + (1−攻击) − 强势   （各项带占位权重）

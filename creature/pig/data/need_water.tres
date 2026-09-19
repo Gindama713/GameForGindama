@@ -7,5 +7,5 @@ script = ExtResource("1")
 id = "water"
 label = "口渴"
 max_value = 100.0
-drain_rate = 0.02315
+drain_rate = 0.07
 depleted_is_lethal = true
