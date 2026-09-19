@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1"]
 [ext_resource type="Script" path="res://world/map_renderer.gd" id="4_map"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://ui/creature_inspector.gd" id="3_inspector"]
 [ext_resource type="Script" path="res://ui/minimap.gd" id="5_minimap"]
 [ext_resource type="Theme" path="res://ui/game_theme.tres" id="6_theme"]
+[ext_resource type="Script" path="res://ui/time_display.gd" id="7_time"]
 
 [node name="Main" type="Node2D"]
 theme = ExtResource("6_theme")
@@ -26,3 +27,6 @@ script = ExtResource("3_inspector")
 
 [node name="Minimap" type="Control" parent="UI"]
 script = ExtResource("5_minimap")
+
+[node name="TimeDisplay" type="Label" parent="UI"]
+script = ExtResource("7_time")

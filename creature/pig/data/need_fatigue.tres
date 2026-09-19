@@ -7,4 +7,4 @@ script = ExtResource("1")
 id = "fatigue"
 label = "疲劳"
 max_value = 100.0
-drain_rate = 0.4
+drain_rate = 0.03472

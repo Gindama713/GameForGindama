@@ -8,7 +8,7 @@ extends CreatureComponent
 ##   Wander   游荡   永远在，权重随「活力」上升
 ##   Social   合群   附近有同类时，权重 = 合群度
 ##   Separate 独处   附近有同类时，权重 = 1−合群度
-##   Rest     休息   权重 = 1−活力；当它压过其余驱动 → **真的停下不动**
+##   Rest     休息   权重 = (1−活力)+(1−疲劳)+夜晚加权；压过其余驱动 → **真的停下不动**（并睡回疲劳）
 ##
 ## 【纪律】只通过协议与别人对话：
 ##   要可走方向 → GridMover（不认识它的内部）；要脾气 → Personality；要邻居 → Perception。
@@ -22,6 +22,8 @@ const SEPARATE_WEIGHT := 1.0
 const REST_WEIGHT := 1.2
 const FATIGUE_REST_WEIGHT := 0.8   # 疲劳→休息意愿（减速而非致命，见 need_def.gd 注释）
 const FATIGUE_SLOW_FACTOR := 1.5   # 疲劳→决策间隔放大（越累动得越稀）
+const NIGHT_REST_BONUS := 0.7      # 夜晚→休息加权（大部分猪夜里歇着；够大又不至于全歇）
+const SLEEP_RECOVER_RATE := 0.2    # 休息/睡觉时疲劳回复速率（每分钟；10 小时夜≈回满）
 
 var _timer: float = 0.0
 var last_drive: String = "wander"   # 上一次决策选中了什么（调试/检视面板用）
@@ -37,10 +39,10 @@ func setup(host: Node) -> void:
 func tick(dt: float) -> void:
 	# 不判断生死 —— 死了就不会被 tick（Creature.die() 已把宿主摘出时钟）
 	_timer -= dt
-	if _timer > 0.0:
-		return
-	_decide_and_act()
-	_reset_timer()
+	if _timer <= 0.0:
+		_decide_and_act()
+		_reset_timer()
+	_recover_while_resting(dt)      # 处在「休息」时睡觉回疲劳
 
 # ---------------- 决策 ----------------
 
@@ -64,8 +66,10 @@ func _decide_and_act() -> void:
 	# 疲劳：累了更想歇、更不想动（减速而非死亡，见 need_def.gd 注释）
 	var fatigue_ratio := _fatigue_ratio()
 
-	# --- Rest 休息：低活力 / 高疲劳都想歇 ---
+	# --- Rest 休息：低活力 / 高疲劳都想歇；夜里再额外加权 → 大部分猪夜里歇着 ---
 	var rest_w := (1.0 - energy) * REST_WEIGHT + (1.0 - fatigue_ratio) * FATIGUE_REST_WEIGHT
+	if TimeSystem.is_night():
+		rest_w += NIGHT_REST_BONUS
 
 	# --- Wander 游荡：随机方向，权重随活力 ---
 	var wander_dir := Vector2(GridMover.DIRS[creature.rng.randi_range(0, GridMover.DIRS.size() - 1)])
@@ -176,3 +180,13 @@ func _fatigue_ratio() -> float:
 	if fn == null:
 		return 1.0
 	return fn.ratio()
+
+## 睡觉恢复疲劳：处于「休息」状态时按速率回复（需 Needs + fatigue 需求，缺则不动）。
+## 走 Needs.restore() 协议，不认识它的内部结构；将来「吃/喝」也走同一个入口。
+func _recover_while_resting(dt: float) -> void:
+	if last_drive != "rest":
+		return
+	var needs_comp := creature.get_component(Needs) as Needs
+	if needs_comp == null:
+		return
+	needs_comp.restore("fatigue", SLEEP_RECOVER_RATE * dt)
