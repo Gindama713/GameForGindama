@@ -11,7 +11,7 @@ extends CreatureComponent
 ##   Wander   游荡   权重随「活力」上升
 ##   Social   合群   附近有同类时 = 合群度，朝邻居重心走（凝聚）
 ##   Separate 独处   附近有同类时 = 1−合群度，背离最近邻居（分离）
-##   Rest     休息   权重 = (1−活力)+(1−疲劳)+夜晚加权；选中 → 原地不动（并睡回疲劳）
+##   Rest     休息   权重 = (1−活力)×0.5+(1−疲劳)×0.8+夜晚 3.0；选中 → 白天短歇、夜里长睡（睡回疲劳）
 ##   Idle     发呆   权重 = 基线 + (1−活力)；选中 → 原地**短歇**（让「走」不再连续）
 ##
 ## 时长也不固定：移动类带抖动、发呆是短歇、休息是**一段有上限的睡眠**（会醒，不是永久静止）。
@@ -25,17 +25,19 @@ const WANDER_BASE := 0.35
 const WANDER_ENERGY := 0.5
 const SOCIAL_WEIGHT := 1.0
 const SEPARATE_WEIGHT := 1.0
-const REST_WEIGHT := 1.2
+const REST_WEIGHT := 0.5           # 白天想歇的倾向（调低 → 白天更活跃；与夜里拉开反差）
 const FATIGUE_REST_WEIGHT := 0.8   # 疲劳→休息意愿（减速而非致命，见 need_def.gd 注释）
 const IDLE_BASE := 0.35            # 发呆基线（保证「走」有间隙，不至于一直动）
 const IDLE_LOW_ENERGY := 0.6       # 低活力更爱站着发呆
-const NIGHT_REST_BONUS := 1.5      # 夜晚→休息加权（轮盘下≈大部分时间在歇，但会偶尔翻动）
+const NIGHT_REST_BONUS := 3.0      # 夜晚→休息加权（远大于白天 → 夜里基本都在睡）
 const FATIGUE_SLOW_FACTOR := 1.5   # 疲劳→移动间隔放大（越累动得越稀）
 const SLEEP_RECOVER_RATE := 0.2    # 休息/睡觉时疲劳回复速率（游戏分钟）
 
-## 一次休息（睡眠）的时长范围（游戏分钟）；到点会醒，不是永久静止
-const REST_MIN := 4.0
-const REST_MAX := 14.0
+## 休息时长（游戏分钟）：白天是「短歇」、夜里是「长睡」（用户 2026-09-19 拍板「拉开昼夜反差」）
+const REST_DAY_MIN := 1.5
+const REST_DAY_MAX := 5.0
+const REST_NIGHT_MIN := 60.0
+const REST_NIGHT_MAX := 150.0
 const JITTER := 0.35               # 移动间隔的随机抖动比例（步频不规律）
 
 var _timer: float = 0.0
@@ -204,8 +206,11 @@ func _reset_timer() -> void:
 	var t: float = base
 	match last_drive:
 		"rest":
-			# 一次睡一段（会醒）；越累睡得越久
-			t = creature.rng.randf_range(REST_MIN, REST_MAX) * (1.0 + (1.0 - fr) * 0.5)
+			# 白天=短歇、夜里=长睡（很少醒）；越累睡得越久
+			var at_night := TimeSystem.is_night()
+			var lo: float = REST_NIGHT_MIN if at_night else REST_DAY_MIN
+			var hi: float = REST_NIGHT_MAX if at_night else REST_DAY_MAX
+			t = creature.rng.randf_range(lo, hi) * (1.0 + (1.0 - fr) * 0.5)
 		"idle":
 			t = base * creature.rng.randf_range(0.4, 3.0)
 		"blocked":
