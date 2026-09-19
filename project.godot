@@ -25,17 +25,11 @@ DefValidator="*res://common/def_validator.gd"
 
 [display]
 
-; 视口基准 = 整个网格：40 x 24 格 x 32px = 1280 x 768（正好一屏装下逻辑网格）
 window/size/viewport_width=1280
 window/size/viewport_height=768
-; 初始窗口 = 视口 1:1（最清晰）；玩家拉大窗口后靠下面的 stretch 自动放大
 window/size/window_width_override=1280
 window/size/window_height_override=768
-; canvas_items：整个 2D（含 Control UI）一起缩放，画面随窗口变大而变大
 window/stretch/mode="canvas_items"
-; keep：等比缩放 + 多余留黑；fractional：允许非整数倍（integer 模式下拉大窗口不放大，实测过）
-window/stretch/aspect="keep"
-window/stretch/scale_mode="fractional"
 
 [gui]
 
