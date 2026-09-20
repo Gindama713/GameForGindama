@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="GrasslandDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://world/grassland/grassland_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+display_name = "草原"
+count_min = 2
+count_max = 3
+ring_jitter = 0.0
+angle_jitter_frac = 0.25
+edge_margin = 1.0
+major_frac_min = 0.55
+ratio_min = 0.5
+tall_inner_ratio = 0.45
+noise_amp = 0.3
+noise_freq = 0.125

@@ -24,7 +24,7 @@ const CELL_FONT_SIZE := 11     # 格子内容用原生尺寸：信息密集区�
 const DRIVE_LABEL := {
 	"wander": "游荡", "social": "合群", "separate": "独行",
 	"rest": "休息", "blocked": "被围", "idle": "发呆",
-	"feed": "觅食", "cling": "跟妈",
+	"feed": "觅食", "cling": "跟妈", "drink": "饮水",
 }
 
 var _creature: Creature

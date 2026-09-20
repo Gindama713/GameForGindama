@@ -13,6 +13,10 @@ extends CreatureComponent
 ##   Separate 独处   附近有同类时 = 1−合群度，背离最近邻居（分离）
 ##   Rest     休息   权重 = (1−活力)×0.5+(1−疲劳)×0.8+夜晚 3.0；选中 → 白天短歇、夜里长睡（睡回疲劳）
 ##   Idle     发呆   权重 = 基线 + (1−活力)；选中 → 原地**短歇**（让「走」不再连续）
+##   Feed     觅食   权重 = 饥饿度 × 4.0（且附近有嫩草）；选中 → 站草上啃 / 朝草走
+##   Drink    饮水   权重 = 口渴度换算（`Drinking.thirst_weight()`，渴到危险再 ×1.6）；
+##                    选中 → 已在水边就**站住**（`Drinking` 自会连续补水），否则朝最近**岸格**走一步
+##   Cling    跟妈   幼崽且母亲活着、离得 ≥2 格时 3.0；选中 → 朝妈走
 ##
 ## 时长也不固定：移动类带抖动、发呆是短歇、休息是**一段有上限的睡眠**（会醒，不是永久静止）。
 ##
@@ -33,8 +37,27 @@ const NIGHT_REST_BONUS := 3.0      # 夜晚→休息加权（远大于白天 →
 const FATIGUE_SLOW_FACTOR := 1.5   # 疲劳→移动间隔放大（越累动得越稀）
 const SLEEP_RECOVER_RATE := 0.2    # 休息/睡觉时疲劳回复速率（游戏分钟）
 const FATIGUE_ID := "fatigue"      # 用哪个需求当「疲劳」—— Brain 唯一需要的需求 id（别再散写字符串）
-const FEED_GAIN := 4.0             # 觅食驱动权重 = 饥饿度(0..1) × FEED_GAIN（饿极了≈4，压过白天的其它驱动）[占位]
+## 觅食驱动权重 = 饥饿度(0..1) × FEED_GAIN。
+## **已实测调过**：4.0 时权重被轮盘摊薄 -> 饿着的猪也只有约 1/3 的决策朝草走；
+##   而"一次休息"买 60~150 游戏分的静止、"一次移动"只买 1 格 -> **时间账上永远被休息压死**，
+##   结果走不完"草场 ↔ 湖"那 70~90 格的通勤、活活饿死在半路（实测 5/5）。
+##   提到 10.0：饿了的猪专心去吃饭（低饥饿时权重仍很小，不影响平时的行为分布）。
+const FEED_GAIN := 10.0
 const CLING_WEIGHT := 3.0          # 幼崽"跟妈"驱动权重（< 饿极了的 feed≈4，故很饿会先去吃再回妈身边）[占位]
+
+## 【旅行粘性 —— 2026-09-20 新增，修的是"猪原地拉锯、哪边都到不了"】
+##   `feed` 与 `drink` 是一对**近乎等重**的驱动：口渴(0.07/分)只比饥饿(0.05/分)快一点点，
+##   于是两者的权重长期咬在伯仲之间。而**一次决策只走 1 格**（约 2~4 游戏分），
+##   草与水又相距十几格 -> 猪被卡在两地中间来回拉锯：朝草一步、朝水一步，**净位移 ≈ 0**。
+##   实测（种子 20260918，8 只猪，1800 游戏分）：
+##     驱动占比 feed 25.6% / drink 25.6% · 站在可食草上只占 **3.7%** 的时间 ·
+##     离可食草恒为 ~15 格、离水恒为 ~8 格 -> 净啃口数只够需求的一半，**全员饿死**。
+##   解法：给"已经在赶路/已经在吃"的那个目标加**粘性** —— 下一次决策继续偏向它，
+##   直到目标达成（吃饱 / 喝足时该驱动的权重自然归零，粘性随之失效，无需额外复位）。
+##   ⇒ 猪变成"走到草上吃饱 -> 渴了走到岸边喝满 -> 再回来吃"，而不是原地拉锯。
+##   ⚠ 粘性有步数上限：目标不可达时不会永久卡死（到点就恢复常规轮盘）。
+const TRAVEL_STICKY := 4.0         # 粘住的目标驱动：权重 ×该值
+const TRAVEL_STICKY_STEPS := 12    # 粘性最多维持这么多次决策
 
 ## 休息时长（游戏分钟）：白天是「短歇」、夜里是「长睡」（用户 2026-09-19 拍板「拉开昼夜反差」）
 const REST_DAY_MIN := 1.5
@@ -45,6 +68,8 @@ const JITTER := 0.35               # 移动间隔的随机抖动比例（步频�
 
 var _timer: float = 0.0
 var last_drive: String = "wander"   # 上一次决策选中了什么（调试/检视面板用）
+var _sticky_drive: String = ""      # 正在"粘住"的目标驱动（feed / drink；见 TRAVEL_STICKY）
+var _sticky_left: int = 0           # 粘性还剩几次决策
 
 func requires() -> Array:
 	return [GridMover]              # 硬依赖：没有移动组件就无从行动
@@ -52,6 +77,8 @@ func requires() -> Array:
 func setup(host: Node) -> void:
 	super.setup(host)
 	last_drive = "wander"
+	_sticky_drive = ""
+	_sticky_left = 0
 	_reset_timer()
 
 func tick(dt: float) -> void:
@@ -125,21 +152,57 @@ func _decide_and_act() -> void:
 				cling_w = CLING_WEIGHT
 				cling_dir = Vector2(d).normalized()
 
+	# 饮水（可选组件 Drinking；没有就不产生 drink 驱动）
+	# 【为什么方位不在这里算】thirst_weight() 便宜（只读需求），而 water_dir() 要遍历水格表（贵）
+	#   -> 方位只在"真的选中 drink"的分支里才算。
+	var drink_w := 0.0
+	var drink := creature.get_component(Drinking) as Drinking
+	if drink != null:
+		drink_w = drink.thirst_weight()
+
+	# --- 旅行粘性：把"正在赶路的目标"抬起来（详见 TRAVEL_STICKY 的注释）---
+	if _sticky_left > 0:
+		if _sticky_drive == "feed":
+			if feed_w > 0.0:
+				feed_w *= TRAVEL_STICKY
+			else:
+				_sticky_left = 0          # 已吃饱 -> 目标消失，粘性立刻失效
+		elif _sticky_drive == "drink":
+			if drink_w > 0.0:
+				drink_w *= TRAVEL_STICKY
+			else:
+				_sticky_left = 0          # 已喝足 -> 同上
+
 	# --- 加权随机（轮盘）选一个驱动 ---
-	var drives: Array[String] = ["wander", "social", "separate", "rest", "idle", "feed", "cling"]
-	var weights: Array[float] = [wander_w, social_w, separate_w, rest_w, idle_w, feed_w, cling_w]
-	match _roulette(drives, weights):
+	var drives: Array[String] = ["wander", "social", "separate", "rest", "idle", "feed", "cling", "drink"]
+	var weights: Array[float] = [wander_w, social_w, separate_w, rest_w, idle_w, feed_w, cling_w, drink_w]
+	var chosen := _roulette(drives, weights)
+	_update_sticky(chosen, feed_w, drink_w)
+	match chosen:
 		"cling":
 			_step_toward(mover, dirs, cling_dir)   # 朝妈走一步（走不动/已在身边=站着陪妈）
 			last_drive = "cling"
 		"feed":
-			# 已站在可食草上 → 站着（Grazing 自会按时啃）；否则朝草走一步
-			if GrassField.is_edible(creature.coord):
+			# 站住开吃**问 Grazing**（口径必须唯一）。原版这里自己判 `is_edible`、而 Grazing 只啃 `is_tender`
+			# → 猪站在满耐久草格上"站住了但啃不动"，永久卡死（实测踩过）。现在只认它一个判断：
+			# **脚下可食就吃**（"嫩草优先"只影响"往哪走"，不影响"吃不吃"）。
+			if graze != null and graze.can_eat_here():
 				last_drive = "feed"
 			elif not _step_toward(mover, dirs, feed_dir):
 				_wander_step(mover, dirs)   # 走不动/已重合 → 退化游荡（下次再试）
 			else:
 				last_drive = "feed"
+		"drink":
+			# 已在岸边 → 站着（Drinking.tick 自会连续补水）；否则朝最近的**岸格**走一步。
+			# 注意走的是"岸格"不是"水格"：水不可踩，朝水格走最后一步必被拒 → 会原地抖动。
+			if drink == null:
+				_wander_step(mover, dirs)                  # 没挂 Drinking（权重>0 时不可能，兜底）
+			elif drink.at_water():
+				last_drive = "drink"
+			elif not _step_toward(mover, dirs, drink.water_dir()):
+				_wander_step(mover, dirs)                  # 走不动/找不到岸格 → 退化游荡（下次再试）
+			else:
+				last_drive = "drink"
 		"social":
 			if _step_toward(mover, dirs, social_dir):
 				last_drive = "social"
@@ -160,6 +223,17 @@ func _decide_and_act() -> void:
 func _wander_step(mover: GridMover, dirs: Array[Vector2i]) -> void:
 	_step_toward(mover, dirs, _rand_dir())
 	last_drive = "wander"
+
+## 记录"这次选的目标驱动"，让下一次决策继续偏向它（粘性）。详见 TRAVEL_STICKY 的注释。
+## 只在目标**还没满足**（权重 > 0）时才续期 —— 吃饱/喝足会自动放手，不需要额外复位。
+func _update_sticky(chosen: String, feed_w: float, drink_w: float) -> void:
+	_sticky_left = maxi(_sticky_left - 1, 0)
+	if chosen == "feed" and feed_w > 0.0:
+		_sticky_drive = "feed"
+		_sticky_left = TRAVEL_STICKY_STEPS
+	elif chosen == "drink" and drink_w > 0.0:
+		_sticky_drive = "drink"
+		_sticky_left = TRAVEL_STICKY_STEPS
 
 func _rand_dir() -> Vector2:
 	var d: Vector2i = GridMover.DIRS[creature.rng.randi_range(0, GridMover.DIRS.size() - 1)]

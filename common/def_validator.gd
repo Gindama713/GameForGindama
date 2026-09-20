@@ -11,7 +11,7 @@ extends Node
 ##   DefValidator（本文件）—— 启动期扫**全部**定义，连没被生成的物种也查。
 ##   Creature._ready()     —— 生成时再查一次，校验没通过就直接拒绝生成。
 
-const SCAN_ROOTS: Array[String] = ["res://creature", "res://world/grass"]
+const SCAN_ROOTS: Array[String] = ["res://creature", "res://world/grass", "res://world/grassland", "res://world/lake"]
 
 func _ready() -> void:
 	validate_all()
@@ -63,6 +63,10 @@ func _validate_resource(res: Resource) -> Array[String]:
 		return (res as GrassDef).validate()
 	if res is LifeDef:
 		return (res as LifeDef).validate()
+	if res is LakeDef:
+		return (res as LakeDef).validate()
+	if res is GrasslandDef:
+		return (res as GrasslandDef).validate()
 	return []
 
 func _validate_part(p: BodyPartDef) -> Array[String]:

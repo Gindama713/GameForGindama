@@ -16,6 +16,7 @@ extends RefCounted
 const UNKNOWN := &"unknown"
 const GRASS := &"grass"
 const TALL_GRASS := &"tall_grass"
+const WATER := &"water"
 
 const TEX_GRASS := preload("res://world/art/grass.png")
 const TEX_TALL_GRASS := preload("res://world/art/high-grass.png")
@@ -45,6 +46,14 @@ const DEFS := {
 		"walkable": true,
 		"conceals": true,
 		"plantable": true,
+	},
+	WATER: {
+		"label": "水域",
+		"texture": null,                    # 无贴图 -> 主画面用 color 兜底
+		"color": Color(0.0, 0.0, 0.0),       # 【用户拍板】水**不填色**：湖里湖外都是黑，只有岸线由 WaterLayer 画出来
+		"walkable": false,                   # 生物不能进水
+		"conceals": false,
+		"plantable": false,                  # 水面不长草
 	},
 }
 

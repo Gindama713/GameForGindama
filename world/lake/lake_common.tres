@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="LakeDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://world/lake/lake_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+display_name = "湖"
+per_anchor_min = 1
+per_anchor_max = 1
+anchor_gap = 10.0
+placement_sweep = 48
+edge_margin = 1.0
+clearance = 3.0
+min_radius = 4.0
+radius_frac_min = 0.115
+radius_frac_max = 0.155
+ratio_min = 0.62
+noise_amp = 0.42
+noise_freq_1 = 0.03
+noise_freq_2 = 0.011
+noise_freq_3 = 0.085
+noise_weight_1 = 0.45
+noise_weight_2 = 0.18
+noise_weight_3 = 0.37
+edge_width_px = 1
+edge_color = Color(1, 1, 1, 1)

@@ -10,6 +10,9 @@ signal creature_moved(creature: Node)     # Creature.move_to() 成功即发（Mi
 signal creature_died(creature: Node)      # Creature.die()（Inspector 切尸体视图 / Minimap 重画）
 signal creature_removed(creature: Node)   # DebugToolbar 清屏等"非死亡移除"（Inspector 关面板 / Minimap 重画）
 signal terrain_changed()                  # 地形批量变化（如草原生成完）—— MapRenderer / Minimap 重画
+signal shorelines_changed(samplers: Array, edge_width_px: int, edge_color: Color)
+                                          # 岸线描述就绪 —— 生成器产数据(ShoreSampler)、WaterLayer 只负责画。
+                                          # 走总线是为了让**两边互不认识**：换生成器不用改渲染层。
 
 # —— 草场（GrassField）事件：带格坐标，供表现层局部重画 ——
 signal grass_established(coord: Vector2i) # 扩散定殖出一格新草
