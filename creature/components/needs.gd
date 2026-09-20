@@ -7,6 +7,12 @@ extends CreatureComponent
 ##
 ## 【纪律】本组件不认识 Body，也不认识任何具体组件 —— 只通过协议与宿主/别人对话。
 
+## 疲劳对移动速度的最大拖累（占位）：累到 0 → 只剩 55% 速度；精神饱满 → 1.0。
+## ⚠ 本系数是**全物种统一**的：`Creature.locomotion_speed()` 聚合协议 6，AI(PlayerBrain/Brain)
+##   都读同一个聚合值 —— 疲劳的减速在这里定义一次，两种大脑都受益（2026-09-20 统一，见 brain.gd）。
+const FATIGUE_ID := "fatigue"
+const FATIGUE_SLOW := 0.55
+
 var needs: Array[Need] = []
 
 func setup(host: Node) -> void:
@@ -35,6 +41,16 @@ func is_lethal() -> bool:
 		if n.def.depleted_is_lethal and n.is_depleted():
 			return true
 	return false
+
+## 移动速度协议（协议 6）：**越累走得越慢**。
+##   fatigue 比例 1（精神饱满）→ 1.0；0（精疲力竭）→ FATIGUE_SLOW(0.55)；中间线性插值。
+## 疲劳**不致命**（设计如此，见 need_def.gd 注释），它的后果就是「更想歇 + 走得更慢」。
+## 无 Needs 组件 / 该物种没挂 fatigue 需求 → 1.0（不影响移动）。
+func move_speed_factor() -> float:
+	var n := need_by_id(FATIGUE_ID)
+	if n == null:
+		return 1.0
+	return lerpf(FATIGUE_SLOW, 1.0, clampf(n.ratio(), 0.0, 1.0))
 
 func lethal_reason() -> String:
 	for n in needs:

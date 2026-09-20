@@ -34,7 +34,6 @@ const FATIGUE_REST_WEIGHT := 0.8   # 疲劳→休息意愿（减速而非致命�
 const IDLE_BASE := 0.35            # 发呆基线（保证「走」有间隙，不至于一直动）
 const IDLE_LOW_ENERGY := 0.6       # 低活力更爱站着发呆
 const NIGHT_REST_BONUS := 3.0      # 夜晚→休息加权（远大于白天 → 夜里基本都在睡）
-const FATIGUE_SLOW_FACTOR := 1.5   # 疲劳→移动间隔放大（越累动得越稀）
 const SLEEP_RECOVER_RATE := 0.2    # 休息/睡觉时疲劳回复速率（游戏分钟）
 const FATIGUE_ID := "fatigue"      # 用哪个需求当「疲劳」—— Brain 唯一需要的需求 id（别再散写字符串）
 ## 觅食驱动权重 = 饥饿度(0..1) × FEED_GAIN。
@@ -59,6 +58,34 @@ const CLING_WEIGHT := 3.0          # 幼崽"跟妈"驱动权重（< 饿极了的
 const TRAVEL_STICKY := 4.0         # 粘住的目标驱动：权重 ×该值
 const TRAVEL_STICKY_STEPS := 12    # 粘性最多维持这么多次决策
 
+## —— 逃命（flee，2026-09-20 加）——
+## 【为什么需要它】用户要求"动物也能疾跑，好更快逃离危险"。但**"危险"必须有个来源**：
+##   本项目的 `Perception.neighbors()` 只返回**同物种**邻居（猪只能看见猪）——
+##   所以在此之前，猪**根本不知道玩家在旁边**，疾跑给它们也没用。
+##   现在 `Perception.threats()` 把「玩家且没藏起来」算作威胁（见 perception.gd），
+##   本驱动据此让猪朝反方向跑、并请求 Sprint。
+##
+## 【为什么权重必须压过 rest】夜间 rest 权重 ≈ 3.0+NIGHT_REST_BONUS(3.0) ≈ 6.0。
+##   若 flee 只有 2~3，就会出现"被追着还站在原地睡觉"的滑稽场面。
+##   FLEE_GAIN 取 12.0：> 夜间休息、也 > 渴到危险档的 drink(≈12.8) 同一量级 ——
+##   逃命是最高优先级的活命行为，但不该让猪渴死，故两者接近、由随机兜底区分。
+const FLEE_GAIN := 12.0
+## 逃命时的决策间隔倍率（压到一半 —— 被追时犹豫 0.8 秒是致命的）。
+const FLEE_DECIDE_MULT := 0.5
+## 威胁记忆时长（游戏分）：威胁消失后仍继续跑一小段。
+## 【为什么需要】猪每格只走 1 步、决策间隔又是 0.4~1 秒，
+##   若"这一帧没威胁"就立刻停下，会出现"跑一步 → 停 → 玩家追上 → 再跑一步"的抽搐。
+##   记忆让它跑出一段像样的距离，而不是贴着玩家原地挪。
+const FLEE_MEMORY := 3.0
+## 脱力（跑空了）时逃命权重的折扣。
+## 【为什么只降不禁止】跑不动的猪仍然该**走**开（常速），只是不再着急。
+##   若把 flee 权重清零，会变成"猪被追到脱力后忽然原地开始吃草"的诡异画面。
+const FLEE_EXHAUSTED_DAMP := 0.6
+## 逃命时"我想跑"门闩的**最短**保持时长（游戏分）。见 `_want_sprint` 的说明。
+## 实际取 `max(决策间隔, 本值)` —— 决策间隔本身就够长时以它为准，
+##   避免出现"门闩比决策还短 -> 中间有帧没举意 -> 跑一格停一格"。
+const FLEE_SPRINT_HOLD := 0.5
+
 ## 休息时长（游戏分钟）：白天是「短歇」、夜里是「长睡」（用户 2026-09-19 拍板「拉开昼夜反差」）
 const REST_DAY_MIN := 1.5
 const REST_DAY_MAX := 5.0
@@ -70,6 +97,12 @@ var _timer: float = 0.0
 var last_drive: String = "wander"   # 上一次决策选中了什么（调试/检视面板用）
 var _sticky_drive: String = ""      # 正在"粘住"的目标驱动（feed / drink；见 TRAVEL_STICKY）
 var _sticky_left: int = 0           # 粘性还剩几次决策
+var _flee_memory: float = 0.0       # 威胁消失后仍继续逃的剩余时间（见 FLEE_MEMORY）
+## 「我想跑」的门闩，由决策点置位、由 `tick()` 每帧举给 Sprint。
+## 【为什么需要门闩】`_decide_and_act()` 每 0.4~1 秒才跑一次，
+##   而 `Sprint` 的意图位**每帧重置** —— 不锁的话，决策后第二帧意图就丢了、猪只跑一格。
+var _want_sprint := false
+var _sprint_hold := 0.0             # 门闩还能保持多久（游戏分）
 
 func requires() -> Array:
 	return [GridMover]              # 硬依赖：没有移动组件就无从行动
@@ -79,10 +112,24 @@ func setup(host: Node) -> void:
 	last_drive = "wander"
 	_sticky_drive = ""
 	_sticky_left = 0
+	_flee_memory = 0.0
+	_want_sprint = false
+	_sprint_hold = 0.0
 	_reset_timer()
 
 func tick(dt: float) -> void:
 	# 不判断生死 —— 死了就不会被 tick（Creature.die() 已把宿主摘出时钟）
+	_flee_memory = maxf(_flee_memory - dt, 0.0)     # 威胁记忆随真实时间衰减
+	_sprint_hold = maxf(_sprint_hold - dt, 0.0)
+	if _sprint_hold <= 0.0:
+		_want_sprint = false
+	# 把门闩举给 Sprint。**每帧都要举**（Sprint 的意图位每帧清空）。
+	# 【与体力脱力的配合】`request(true)` 只管举意，跑不跑得动由 Sprint 自己判 ——
+	#   跑空的猪会自动变成"常速逃"，这正是"追累了能咬死"的机制。
+	if _want_sprint:
+		var sp := creature.get_component(Sprint) as Sprint
+		if sp != null:
+			sp.request(true)
 	_timer -= dt
 	if _timer <= 0.0:
 		_decide_and_act()
@@ -160,6 +207,31 @@ func _decide_and_act() -> void:
 	if drink != null:
 		drink_w = drink.thirst_weight()
 
+	# 逃命（flee，2026-09-20）—— 需要 Perception（看得见威胁）+ Sprint（跑得动）。
+	# 【代价】`threats()` 只遍历 `"player"` 组的成员（**不是全生物表**），O(1) 级别；
+	#   且本函数只在**决策点**被调用（不是每帧），所以可以放心查。
+	#   与之相对，`Sprint.tick()` 是每帧的 —— 所以那边的体力读取必须 O(1)（它确实只读一条需求）。
+	var flee_w := 0.0
+	var flee_dir := Vector2.ZERO
+	var sprint := creature.get_component(Sprint) as Sprint
+	if perc != null:
+		var threats := perc.threats()
+		if not threats.is_empty():
+			_flee_memory = FLEE_MEMORY          # 看见威胁 -> 续期记忆
+			flee_dir = _dir_from_nearest(threats)   # 背离最近的那个威胁
+			flee_w = FLEE_GAIN
+		elif _flee_memory > 0.0:
+			# 记忆期：威胁暂时看不见了（玩家被高草藏起来 / 走远了），但余势还在。
+			# 【为什么不记住方向】记住的向量早已过时 —— 猪会朝一个空方向跑很远。
+			#   这里退化为**普通游荡 + 半个权重**（"往远处遛"而不是"原地等被追"）：
+			#   用一个随机方向，仍然是"在动"而不是站着。
+			flee_dir = _rand_dir()
+			flee_w = FLEE_GAIN * 0.5
+	# 体力见底 -> 逃命意愿稍降（跑不动了，一直朝墙撞没意义）。
+	# 注意：这里**不阻止逃命**，只是降低权重 —— 猪仍然会常速走开，只是不再那么急。
+	if flee_w > 0.0 and sprint != null and sprint.is_exhausted():
+		flee_w *= FLEE_EXHAUSTED_DAMP
+
 	# --- 旅行粘性：把"正在赶路的目标"抬起来（详见 TRAVEL_STICKY 的注释）---
 	if _sticky_left > 0:
 		if _sticky_drive == "feed":
@@ -174,11 +246,22 @@ func _decide_and_act() -> void:
 				_sticky_left = 0          # 已喝足 -> 同上
 
 	# --- 加权随机（轮盘）选一个驱动 ---
-	var drives: Array[String] = ["wander", "social", "separate", "rest", "idle", "feed", "cling", "drink"]
-	var weights: Array[float] = [wander_w, social_w, separate_w, rest_w, idle_w, feed_w, cling_w, drink_w]
+	var drives: Array[String] = ["wander", "social", "separate", "rest", "idle", "feed", "cling", "drink", "flee"]
+	var weights: Array[float] = [wander_w, social_w, separate_w, rest_w, idle_w, feed_w, cling_w, drink_w, flee_w]
 	var chosen := _roulette(drives, weights)
 	_update_sticky(chosen, feed_w, drink_w)
 	match chosen:
+		"flee":
+			# 逃命：朝背离威胁的方向跑一格。
+			# 【疾跑意图由 `tick()` 每帧举】见 `_want_sprint` —— 本函数只在决策点跑
+			#   （每 0.4~1 秒一次），而 Sprint 的意图位是**每帧重置**的，
+			#   所以这里只做"决定要不要跑"，不直接 request。
+			_want_sprint = true
+			_sprint_hold = maxf(_timer, FLEE_SPRINT_HOLD)   # 门闩至少撑到下一次决策
+			if not _step_toward(mover, dirs, flee_dir):
+				_wander_step(mover, dirs)      # 无路可逃（被围死）-> 退化游荡
+			else:
+				last_drive = "flee"
 		"cling":
 			_step_toward(mover, dirs, cling_dir)   # 朝妈走一步（走不动/已在身边=站着陪妈）
 			last_drive = "cling"
@@ -302,14 +385,29 @@ func _dir_from_nearest(ns: Array) -> Vector2:
 		return Vector2.ZERO
 	return away.normalized()
 
-## 决策间隔：移动类带抖动；发呆=短歇；休息=一段（有上限）睡眠；越累移动越慢。
+## 决策间隔：移动类带抖动；发呆=短歇；休息=一段（有上限）睡眠；**被减速时移动间隔等比放大**。
+##
+## 【速度定义域只有一处 —— 2026-09-20 统一】
+##   从前本函数自己算「`aging.speed_factor()` × 疲劳放大」这套减速，
+##   而 PlayerBrain 走的是 `Creature.locomotion_speed()`（协议 6 聚合值）——
+##   **同一事实两套算法**：把 Aging 或 Needs 的系数调了，AI 与主角会朝不同方向漂移
+##   （最坏情况：调慢疲劳后 AI 变慢、主角没变，且没人看得出是哪一处生效）。
+##   现在统一为：**`Creature.current_speed()` 是唯一的"速度聚合"入口**（含减益与疾跑增益），
+##   Brain 只把它换算成决策间隔（越慢 → 间隔越长），不再认识 Aging / Needs / Sprint 的内部系数。
+##   协议 6 的每个实现者（Aging 的幼老、Needs 的疲劳、Body 的断腿）各自贡献一份减速；
+##   协议 6b 的实现者（Sprint）贡献加速。
+##
+## ⚠ 与「性格/抖动」的分工：`energy`（活力）与 `JITTER`（随机）是 **Brain 独有的决策节奏**，
+##   不属于"移动速度"，物理上没法从 current_speed 推出来 → 仍留在本函数里。
 func _reset_timer() -> void:
 	var base := 1.0
 	if creature.def != null and creature.def.move_interval > 0.0:
 		base = creature.def.move_interval
-	var aging := creature.get_component(Aging) as Aging
-	if aging != null:
-		base *= aging.speed_factor()      # 幼崽/老年决策更慢（年龄影响行为节奏）
+	# 只认协议 6/6b 的聚合值：1.0 = 满速（间隔不变）；0.63 = 幼崽 → 间隔 ×1.59；
+	# 2.0 = **疾跑中** → 间隔 ×0.5（逃命时决策得更勤，否则冲刺白加）。
+	# ⚠ 显式标 float：`creature` 在组件基类里是 `Node`，取到的是 Variant（坑 7）。
+	var speed: float = creature.current_speed()
+	base *= 1.0 / maxf(speed, 0.1)    # 下限保护：动不了时别把间隔乘到无穷（0.1 → 最多 ×10）
 
 	var energy := 0.5
 	var person := creature.get_component(Personality) as Personality
@@ -329,11 +427,14 @@ func _reset_timer() -> void:
 			t = base * creature.rng.randf_range(0.4, 3.0)
 		"blocked":
 			t = base * 0.5
+		"flee":
+			# 逃命：**间隔再压一半** —— 被追的时候犹豫 0.8 秒是致命的。
+			# 不用 randf 抖动（逃跑节奏要稳，不能"跑一格发呆一下"）。
+			t = base * FLEE_DECIDE_MULT
 		_:
-			# 移动类：活力高更频繁；疲劳低更慢；再加抖动 → 步频不规律
+			# 移动类：活力高更频繁；再加抖动 → 步频不规律。
+			# 疲劳的减速已由 current_speed()（Needs.move_speed_factor）贡献，此处不再重复乘。
 			t = base * (1.6 - energy) * creature.rng.randf_range(1.0 - JITTER, 1.0 + JITTER)
-			if fr < 1.0:
-				t *= 1.0 + (1.0 - fr) * FATIGUE_SLOW_FACTOR
 	_timer = maxf(t, 0.15)
 
 ## 调试自述（生成日志 + 调试器检查器里的 debug/components/brain 行）
@@ -341,6 +442,9 @@ func debug_state() -> String:
 	return "上次=%s 下次 %.1fs" % [last_drive, _timer]
 
 ## 疲劳满足度（1=精神饱满，0=精疲力竭）。无 Needs 组件 / 无 fatigue 需求 → 返回 1.0（不影响行为）。
+## ⚠ 只用于**睡眠时长**（rest 越想睡越久）——**不再用于移动减速**：
+##   移动减速走协议 6（`Needs.move_speed_factor()` 经 `Creature.locomotion_speed()` 聚合）。
+##   两处用途不同，不是重复定义：一个是"睡多久"，一个是"动多慢"。
 func _fatigue_ratio() -> float:
 	var needs_comp := creature.get_component(Needs) as Needs
 	if needs_comp == null:

@@ -16,19 +16,26 @@ func register(c: Node) -> void:
 		return
 	_by_id[c.id] = c
 
+## 死/清屏前留一份快照 → 族谱里仍能画出这位（标"已故"），而不是凭空消失。
+## **含贴图与配色**（2026-09-20 加）：族谱头像按"这位生前长什么样"画，
+## 没有这两个字段的话已故主角/新物种会被画成猪（旧版的 bug）。
 func unregister(c: Node) -> void:
 	if c == null:
 		return
-	# 死/清屏前留一份亲缘快照 → 族谱里仍能画出这位（标"已故"），而不是凭空消失
 	var cr := c as Creature
 	if cr != null:
 		var lin: Lineage = cr.get_component(Lineage) as Lineage
+		# ⚠ `cr.def` 是 Variant（`Creature.def` 是导出成员）→ 必须显式标类型，
+		#   否则 `:=` 推不出（事实文档 §2.4 坑 7，本项目反复踩到的那条）。
+		var d: CreatureDef = cr.def
 		_archive[cr.id] = {
 			"sex": (lin.sex if lin != null else Lineage.Sex.MALE),
 			"mother_id": (lin.mother_id if lin != null else -1),
 			"father_id": (lin.father_id if lin != null else -1),
 			"children_ids": (lin.children_ids.duplicate() if lin != null else []),
 			"tag": cr.tag(),
+			"texture": (d.texture if d != null else null),
+			"color": (d.map_color if d != null else Color(1, 1, 1)),
 		}
 	_by_id.erase(cr.id if cr != null else -1)
 

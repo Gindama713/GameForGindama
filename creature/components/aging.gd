@@ -66,6 +66,15 @@ func speed_factor() -> float:
 		_:
 			return 1.0
 
+## 移动速度协议（协议 6）：**幼/老走得慢**。
+##   取 `speed_factor()` 的**倒数** —— 因为 speed_factor 表达的是"决策间隔要乘几"（越大越慢），
+##   而本协议表达的是"速度是满速的几成"（越小越慢）。1/1.6≈0.63（幼）、1/1.3≈0.77（老）、成 1.0。
+## 【为什么用倒数而不是另定一套常数】两个量是同一个事实的两种说法，
+##   各写一份就会出现"改了一处忘一处"（如把 speed_factor 调成 2.0，速度却还是 0.63）。
+##   ⇒ 定义域只有 speed_factor 一处，本函数是它的派生视图。
+func move_speed_factor() -> float:
+	return 1.0 / maxf(speed_factor(), 0.0001)
+
 ## 身体素质（活力/强壮度，0..1+）：幼崽弱、成年巅峰、老年衰。Body 用它算受伤倍率。
 func vitality() -> float:
 	match stage():

@@ -8,6 +8,18 @@ var def: BodyPartDef
 var hp: float
 var bleeding: float = 0.0     # 每秒掉血；归零时由 Body 主动清零（出血结束）
 
+## 伤势分级（2026-09-20 新增）。**表现层与 UI 共用的一把尺子** ——
+## 谁要按伤情上色/换文案，都问 severity()，不要各自写一遍阈值。
+## 判据只用 hp 比例（`ratio()`），因为出血/失能最终都体现在掉血上；
+## 出血是**趋势**（还在掉），颜色由调用方叠加显示，不混进等级。
+enum Severity { HEALTHY, LIGHT, MODERATE, SEVERE, DISABLED }
+
+## 分级阈值：血量比例 **≥** 该值即算该档（从高到低判）。
+## 四个数往上调 = 更容易受伤；往下调 = 更皮实。改平衡只动这里。
+const SEVERITY_LIGHT := 0.85      # < 85% → 轻伤（轻微黄）
+const SEVERITY_MODERATE := 0.55   # < 55% → 中度（橙）
+const SEVERITY_SEVERE := 0.25     # < 25% → 重伤（红）；=0 → 失能（暗红）
+
 # 调试日志去重标记（避免每帧刷屏）
 var _half_logged: bool = false    # 是否已报过「掉到 50% 以下」
 var _down_logged: bool = false    # 是否已报过「失能」
@@ -25,6 +37,29 @@ func ratio() -> float:
 
 func function_ok() -> bool:
 	return hp > 0.0
+
+## 伤势分级。阈值集中在 `SEVERITY_*` 常量里，加档/改档只动那一处。
+## 返回 `Severity` 枚举 —— 调用方（UI 上色 / 表现层）自己决定每一档长什么样。
+func severity() -> Severity:
+	if hp <= 0.0:
+		return Severity.DISABLED
+	var r := ratio()
+	if r >= SEVERITY_LIGHT:
+		return Severity.HEALTHY
+	if r >= SEVERITY_MODERATE:
+		return Severity.LIGHT
+	if r >= SEVERITY_SEVERE:
+		return Severity.MODERATE
+	return Severity.SEVERE
+
+## 伤势中文名（与 severity() 一一对应，UI 直接用）。
+func severity_text() -> String:
+	match severity():
+		Severity.DISABLED: return "失能"
+		Severity.SEVERE:   return "重伤"
+		Severity.MODERATE: return "中度"
+		Severity.LIGHT:    return "轻伤"
+		_:                 return "完好"
 
 func apply_damage(amount: float) -> void:
 	hp = maxf(hp - amount, 0.0)

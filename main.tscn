@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1"]
 [ext_resource type="Script" path="res://world/map_renderer.gd" id="4_map"]
@@ -8,6 +8,8 @@
 [ext_resource type="Script" path="res://ui/night_overlay.gd" id="8_night"]
 [ext_resource type="Script" path="res://world/camera_rig.gd" id="9_cam"]
 [ext_resource type="Script" path="res://world/water_layer.gd" id="10_water"]
+[ext_resource type="Script" path="res://ui/player_hud.gd" id="11_hud"]
+[ext_resource type="Script" path="res://ui/player_panel.gd" id="12_panel"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1")
@@ -36,3 +38,9 @@ script = ExtResource("5_minimap")
 
 [node name="TimeDisplay" type="Label" parent="UI"]
 script = ExtResource("7_time")
+
+[node name="PlayerHud" type="Control" parent="UI"]
+script = ExtResource("11_hud")
+
+[node name="PlayerPanel" type="Control" parent="UI"]
+script = ExtResource("12_panel")

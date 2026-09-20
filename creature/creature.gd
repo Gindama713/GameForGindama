@@ -25,6 +25,10 @@ static var _seed_offset: int = 0
 var _components: Dictionary = {}   # 脚本路径(String) -> 组件实例
 var _sprite: Sprite2D
 
+## 速度总倍率的硬上限（见 `current_speed()`）。疾跑 = 2.0，留一倍余量给将来
+##   （骑乘 / 下坡 / 药物）—— 但**必须有个顶**，否则某天一个乘法写错就把生物瞬移了。
+const SPRINT_SPEED_MAX := 4.0
+
 func _ready() -> void:
 	id = _next_id
 	_next_id += 1
@@ -241,12 +245,21 @@ func _on_tick(dt: float) -> void:
 	check_dead_state()
 
 # ---------------- 网格占位 ----------------
-## 该格能否被我占：在界内 + 是空格或是自己。
+## 该格能否被我占：在界内 + **地形可踩** + 是空格或是自己。
+##
+## 【为什么要查地形（2026-09-20 补）】原先只查界内和占格，于是"能不能站"与"能不能走过去"
+##   是两套规则 —— `GridMover` 走一步要 `Terrain.walkable()`，而落格不需要。
+##   现在没有东西会主动把自己放进水里，**但规则不对称就是雷**：
+##   将来任何一个"把 X 放到空格上"的工具（落物 / 传送 / 繁殖找空位）都会直接踩进去。
+##   补上这一条，让**"能落格"成为"能移动"的真子集** —— 同一事实只有一处定义。
+##   `self.is_terrain_ok()` 见下方；`unknown`（黑土）与 `grass` 都是 walkable，不受影响。
 func can_place_at(c: Vector2i) -> bool:
 	if not GridManager.in_bounds(c.x, c.y):
 		return false
 	var cell := GridManager.cell_at(c.x, c.y)
 	if cell == null:
+		return false
+	if not Terrain.walkable(cell.terrain):
 		return false
 	return cell.content == null or cell.content == self
 
@@ -304,6 +317,13 @@ func _render() -> void:
 	_sprite.texture = def.texture
 	var k := float(Grid.CELL_SIZE) / float(def.texture.get_width())
 	_sprite.scale = Vector2(k, k) * _aggregate_scale()
+	_apply_injury_tint()
+
+## 按伤势给精灵染色（协议 7 聚合）。**死后不覆盖** —— 死亡色调是更重的终态。
+func _apply_injury_tint() -> void:
+	if _sprite == null or not _alive:
+		return
+	_sprite.self_modulate = _aggregate_tint()
 
 ## 各组件 visual_scale 相乘（协议聚合，基类不认识具体组件；默认全 1.0 → 不变）。
 func _aggregate_scale() -> float:
@@ -312,12 +332,71 @@ func _aggregate_scale() -> float:
 		s *= comp.visual_scale()
 	return s
 
+## 各组件 injury_tint 取**离白最远**的一个（协议聚合，基类不认识具体组件）。
+##
+## ⚠ 与 _aggregate_scale() 的规则**不同**：缩放相乘、染色取最重。
+##   颜色相乘会越乘越黑（黄×红=暗橙），语义就丢了 —— "受伤"是**取最严重的一个**，不是叠加。
+## 默认全白 → 返回白 → 不给精灵染色（不改变原有外观）。
+func _aggregate_tint() -> Color:
+	var best := Color(1, 1, 1, 1)
+	var best_d := 0.0
+	for comp in _components.values():
+		# ⚠ `comp` 从 Dictionary 取出是 Variant → `:=` 推不出返回类型（坑 7）。
+		var c: Color = comp.injury_tint()
+		# 偏离度 = 离白色多远（1 - 最接近白的那个通道）。纯白 = 0。
+		var d := 1.0 - minf(minf(c.r, c.g), c.b)
+		if d > best_d:
+			best_d = d
+			best = c
+	return best
+
+## 宿主当前的移动速度系数（0..1；1 = 满速，0 = 动不了）。
+##
+## 与 is_concealed() / _aggregate_scale() 同构：**基类只做乘积聚合，不认识任何具体组件**。
+## 于是「腿断了 / 累极了 / 老幼」这些减速来源各自在自己的组件里实现 `move_speed_factor()`，
+## 想加一种新减速（负重超限 / 中毒 / 雪地）也不必回来改这里。
+##
+## ⚠ 与 `GridMover.can_move()` 的分工：
+##   can_move()   —— 「**能不能**动」（协议 2 allows_movement，全票才放行的硬否决）
+##   locomotion_speed() —— 「动得**多快**」（协议 6，连续量，喂给 PlayerBrain 的步频 gate）
+## 两者独立：全断腿时被前者否决，走了也没用；而"瘸了一条腿"是前者放行、后者减速。
+##
+## 【2026-09-20 加疾跑：两个槽分开乘】见 `current_speed()` —— 本函数仍只管**减益**
+##   （语义没变，仍是钳 0..1），疾跑走协议 6b 的独立槽。
+func locomotion_speed() -> float:
+	var s := 1.0
+	for comp in _components.values():
+		s *= comp.move_speed_factor()
+	return clampf(s, 0.0, 1.0)
+
+## 宿主**实际**的移动速度系数（含疾跑增益）。
+##
+## 【为什么要有这一层】`locomotion_speed()` 的语义是"减益聚合"（钳 0..1），
+##   而疾跑要 > 1 —— 如果直接放宽它的钳制，减益与增益就混进同一个槽，
+##   一条失控的减益也能把速度推过 1.0，边界失效。
+##   于是：**减益走协议 6（钳 0..1）、增益走协议 6b（钳 1..SPRINT_MAX），
+##   两条轴各自钳好再相乘** —— 谁也污染不了谁。
+##
+## 【谁该调哪个】
+##   大脑（PlayerBrain / Brain）**一律调本函数**去算步频 gate —— 它才是"这人现在多快"。
+##   `locomotion_speed()` 保留给"只看身体状态不看是否在跑"的场合（如调试自述、平衡回归）。
+func current_speed() -> float:
+	var slow := locomotion_speed()          # 协议 6：减益，已钳 0..1
+	var fast := 1.0
+	for comp in _components.values():
+		fast *= comp.sprint_speed_factor()
+	fast = clampf(fast, 1.0, SPRINT_SPEED_MAX)   # 协议 6b：增益，钳 1..上限
+	return clampf(slow * fast, 0.0, SPRINT_SPEED_MAX)
+
 ## 成长是连续的：每 tick 轻量刷新一次精灵缩放（只在有图时；一次乘法+赋值，很便宜）。
+## **顺带刷新伤势染色** —— 伤是随时可能挨的（不必等移动才更新外观），
+## 两个都是"每 tick 一次赋值"级别的开销，合在一起省一次遍历。
 func _refresh_growth_scale() -> void:
 	if _sprite == null or def == null or def.texture == null:
 		return
 	var k := float(Grid.CELL_SIZE) / float(def.texture.get_width())
 	_sprite.scale = Vector2(k, k) * _aggregate_scale()
+	_apply_injury_tint()
 
 func _draw() -> void:
 	if is_concealed():
@@ -325,4 +404,7 @@ func _draw() -> void:
 	if def == null or (_sprite != null and def.texture != null):
 		return                  # 有图在显示，不画兜底块
 	var col: Color = def.map_color if _alive else DEAD_COLOR
+	# 无图物种也按伤势染色（与有图物种同一套协议，只是改的是兜底块的颜色）
+	if _alive:
+		col = col * _aggregate_tint()
 	draw_rect(Rect2(Vector2.ONE * -BODY_SIZE * 0.5, Vector2.ONE * BODY_SIZE), col)

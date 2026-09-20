@@ -117,6 +117,11 @@ func _resolve(id: int) -> Dictionary:
 			"mother_id": (lin.mother_id if lin != null else -1),
 			"father_id": (lin.father_id if lin != null else -1),
 			"children_ids": (lin.children_ids if lin != null else []),
+			# **头像与配色跟着物种走**（2026-09-20 修）：此前不带这两个字段，
+			# `_draw()` 一律画 PIG_TEX → 主角（人）在族谱里"还是一头猪"。
+			# ⚠ `c.def` 是 Variant（Creature.def 是导出成员）→ 显式标类型（§2.4 坑 7）。
+			"texture": _tex_of(c),
+			"color": _color_of(c),
 		}
 	var rec := FamilyRegistry.get_record(id)
 	if rec.is_empty():
@@ -126,7 +131,21 @@ func _resolve(id: int) -> Dictionary:
 		"sex": rec["sex"], "size": 1.0,
 		"mother_id": rec["mother_id"], "father_id": rec["father_id"],
 		"children_ids": rec["children_ids"],
+		# 已故者用出生时留在 FamilyRegistry 的那份快照（见 unregister()）——
+		# 没有它，已故主角也会被画成猪。缺失时回退到猪图（旧行为，至少不崩）。
+		"texture": (rec.get("texture") if rec.get("texture") != null else PIG_TEX),
+		"color": rec.get("color", COL_TEXT),
 	}
+
+## 活体的贴图：`def.texture` 优先；没配图（纯逻辑生物）→ null，由 `_draw` 回退到色块/猪图。
+func _tex_of(c: Creature) -> Texture2D:
+	var d: CreatureDef = c.def
+	return d.texture if d != null else null
+
+## 活体的配色（`def.map_color`）。
+func _color_of(c: Creature) -> Color:
+	var d: CreatureDef = c.def
+	return d.map_color if d != null else COL_TEXT
 
 # ---------------- 布局 ----------------
 
@@ -307,6 +326,12 @@ func _draw() -> void:
 		var aw := NODE * 0.86 * clampf(s, 0.2, 1.0)
 		var ar := Rect2(r.position + (Vector2(NODE, NODE) - Vector2(aw, aw)) * 0.5, Vector2(aw, aw))
 		var tint: Color = COL_TEXT if n["alive"] else COL_DEAD
-		draw_texture_rect(PIG_TEX, ar, false, tint)
+		# **按节点自己的物种贴图**（2026-09-20 修）—— 此前这里硬编码 PIG_TEX，
+		# 于是主角（人）在族谱里被画成猪。取不到图（纯逻辑生物）才回退到猪图。
+		# ⚠ Dictionary 取出的是 Variant → 显式标类型（§2.4 坑 7）。
+		var tex: Texture2D = n.get("texture")
+		if tex == null:
+			tex = PIG_TEX
+		draw_texture_rect(tex, ar, false, tint)
 		draw_string(ThemeDB.fallback_font, Vector2(r.position.x - 8, r.end.y + 16), n["label"], HORIZONTAL_ALIGNMENT_LEFT, NODE + 16, 12, COL_TEXT)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

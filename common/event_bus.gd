@@ -23,3 +23,9 @@ signal grass_changed(coord: Vector2i)     # 任意耐久变化（啃食/再生�
 # —— 生命 / 家族 ——
 signal birth_requested(mother: Node, father: Node)  # Reproduction 请求生育；Main 执行真造娃
 signal creature_grew(creature: Node)                # 跨生命阶段（幼→成→老），供将来效果/日志
+
+# —— 主角（2026-09-20）——
+## 主角生成完毕。**与 creature_spawned 并列但语义不同**：那个是"场上多了个生物"（表现层重画），
+##   这个是"玩家有身体了" —— HUD / 相机 / 输入这类**只在有主角时才有意义**的订阅者听它。
+## 分开的理由：DebugToolbar 可以刷出一百只猪（creature_spawned ×100），但主角全场只有一个。
+signal player_spawned(player: Node)

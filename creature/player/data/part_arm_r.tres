@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="BodyPartDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://creature/body_part_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "arm_r"
+label = "右臂"
+max_hp = 50.0
+limb_types = Array[String](["grasp"])
+category = "arm"

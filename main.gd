@@ -4,6 +4,7 @@ extends Node2D
 ## 本文件是「组装根」：**生成地形 -> 放生物**，都走明确入口，不散落各处。
 
 const PIG_SCENE := preload("res://creature/pig/pig.tscn")
+const PLAYER_SCENE := preload("res://creature/player/player.tscn")
 
 ## 两种地貌的"性质"（数量 / 落位 / 尺寸 / 形状 / 岸线怎么画）都在 .tres 里，本文件只负责接线。
 ## 本文件是**组装根**，也是唯一同时认识"草原"和"湖泊"的地方 —— 所以两个生成器
@@ -30,9 +31,30 @@ const SPAWN_BIAS_HALF := PI / 3.0
 const FAMILY_MIN := 2
 const FAMILY_MAX := 3
 
+## 主角的起始年龄 = 寿命 × 此比例（**青年偏成年**，2026-09-20 用户拍板）。
+## 不设的话 `Aging.setup()` 给 0 岁 → 幼崽（体型 25% = 8px、速度 0.625 = 1.28s/格），
+##   即"人看着那么小、走得那么慢"的根因。取 0.3：刚过成熟线 0.2（成年满值），
+##   但比猪父母的 0.4 年轻 → 距老年线 0.75 还有 ≈2.7 游戏天。
+const SPAWN_AGE_RATIO := 0.3
+
+## 主角身上的**组标**（2026-09-20）。通用检视窗靠它避开主角 ——
+## 主角有自己的档案面板（`ui/player_panel.gd`），不需要再弹一个"观察别人用"的调试窗。
+## 【为什么用组】"谁在扮演玩家"是编排层知识，不该加 `Creature.is_player` 字段
+##   （那等于往基类塞业务身份，违反 §2.2「主角严格是一个物种」的纪律）。
+##   组是 Godot 原生机制，UI 侧 `is_in_group("player")` 一句就问到了，双方都不必认识对方。
+const GROUP_PLAYER := "player"
+
 ## 场上所有生物的容器节点（场景树里生物的「区」）。
 ## 【绘制顺序】它在 MapRenderer **之后** —— 兄弟节点按顺序绘制、后画的在上层，所以生物画在地表之上。
 @onready var _creatures: Node2D = $Creatures
+
+## 相机（跟随主角）。场景里是 Camera2D + camera_rig.gd。
+@onready var _camera: Camera2D = $Camera2D
+
+## 主角引用（全场唯一）。未生成 / 已释放时为 null。
+## 【放这里而不是放 Creature】"谁在扮演玩家"是**编排层的知识**，不是生物自身的属性 ——
+##   生物不该知道自己是主角（换了控制方式它还是同一条命）。
+var player: Creature = null
 
 func _ready() -> void:
 	var rng := RandomNumberGenerator.new()
@@ -103,8 +125,110 @@ func _ready() -> void:
 	print("[开局] %d 个家庭 / 场上 %d 只生物（分居 %d 片草原旁），当前藏进高草 %d 只" % [
 		n_fam, creature_count(), n_grass, concealed_count()])
 
+	# 4) 主角：落在**某片草原「朝水」那一侧**的可走非水空格（种子化 → 同种子同落点）。
+	#    与猪同格判定（walkable && 非水 && 空格），但猪走得慢/会死，主角不会因此消失 —— 只是他也在同一张网上。
+	_spawn_player(g_centers, g_reaches, g_majors, lake_ang, has_lake, rng)
+
 	# 繁殖：Reproduction 只发请求，真造娃在这里（生成唯一入口，§3.2/§6.5）
 	EventBus.birth_requested.connect(_on_birth_requested)
+
+## 开盘生成主角（§8）。**落位纪律**：
+##   1) 选一片**配到水**的草原（`has_lake`）；挑不到就退化为第 0 片（至少不会落空）。
+##   2) 落点取该草原「朝水」方位（`lake_ang`）±SPAWN_BIAS_HALF 的扇区里，半径 = 草原长半轴+1 的**外沿**，
+##      即"草与水之间"——猪找水要走的那条路，主角就站在路上。
+##   3) 只落 `walkable && 非水 && content==null` 的格（与 `_pick_free_near` 同判据）。
+##   ⚠ 与猪的落位**共用同一颗 rng**：谁先生成会改变后续抽样 —— 主角固定排在所有家庭之后，
+##     所以"改了主角"不会移动猪圈（顺序即契约）。
+func _spawn_player(g_centers: Array, g_reaches: Array, g_majors: Array,
+		lake_ang: Array[float], has_lake: Array[bool],
+		rng: RandomNumberGenerator) -> Creature:
+	if g_centers.is_empty():
+		push_warning("[主角] 世界没有草原，无法生成主角")
+		return null
+	# 1) 首选配到水的草原
+	var gi := -1
+	for i in g_centers.size():
+		if has_lake[i]:
+			gi = i
+			break
+	if gi < 0:
+		gi = 0
+	# 2) 扇区随机方向：朝水方位 ±30°（草原没水时绕一圈）
+	var ang := lake_ang[gi]
+	if not has_lake[gi]:
+		ang = rng.randf() * TAU
+	else:
+		ang += rng.randf_range(-SPAWN_BIAS_HALF, SPAWN_BIAS_HALF)
+	# 3) 半径：草原外沿（长半轴 +1）往外一点点，落在"草外、水边"的带上
+	var ring_in := int(ceil(float(g_majors[gi]))) + 1
+	var center := Vector2(g_centers[gi])
+	# 4) 在扇区外沿试格；不可用就多试几处（同一片可走带里挪）
+	var spawn := _player_spawn_cell(center, ang, ring_in, rng)
+	if spawn.x < 0:
+		push_warning("[主角] 找不到可走非水空格，主角未生成")
+		return null
+
+	var p: Creature = PLAYER_SCENE.instantiate()
+	p.coord = spawn                 # 必须在 add_child 前设好，_ready 才会落对格
+	_creatures.add_child(p)
+	if p.is_queued_for_deletion():
+		push_warning("[主角] 定义校验未过，主角未生成")
+		return null
+	player = p
+	# **给主角打组标**（2026-09-20）：通用检视窗靠这个组避开主角（主角有自己的档案面板）。
+	# 用组而不是加 `is_player` 字段 —— "谁在扮演玩家"是**编排层知识**，
+	# 不该往 `Creature` 基类里塞业务身份（见 §2.2 纪律：删掉 player/ 框架照常运转）。
+	# 组是 Godot 原生机制，UI 侧问一句 `is_in_group("player")` 即可，不必认识 Main。
+	p.add_to_group(GROUP_PLAYER)
+	_apply_player_start_age(p)
+	# 表现层接线：相机跟随 + HUD 订阅。走总线是为了让"谁在听"不必让 Main 逐个知道。
+	_camera.set_target(p)
+	EventBus.creature_spawned.emit(p)   # 小地图等也认它是场上生物
+	EventBus.player_spawned.emit(p)
+	# ⚠ 上面这行 `Creature._ready()` 里的 `_log_spawn()` 是**设年龄之前**打的，那份日志会写成"幼/体型25%"
+	#   （因为它在 add_child 那一刻就跑了）。这里补一条**改完之后**的，避免日志与实际不符误导排查。
+	var ag := p.get_component(Aging) as Aging
+	if ag != null:
+		Log.ev("生成", "主角 @%s（第 %d 片草原旁）年龄 %.2f/%.2f 天[%s] 体型%.0f%% 速度%.2f" % [
+			spawn, gi, ag.age_min / 1440.0, ag.lifespan_min / 1440.0,
+			["幼", "成", "老"][ag.stage()], ag.size_ratio() * 100.0, p.locomotion_speed()])
+	else:
+		Log.ev("生成", "主角 @%s（第 %d 片草原旁）" % [spawn, gi])
+	return p
+
+## 主角的起始年龄 = 寿命 × SPAWN_AGE_RATIO（**青年偏成年**）。
+##
+## 【为什么必须显式设】`Aging.setup()` 一律给 `age_min = 0` → 主角是**幼崽**：
+##   体型 `size_baby(0.25)` → 精灵只有 8px（一格 32px 的四分之一）；
+##   速度 `1/speed_factor(1.6) = 0.625` → 步频 `0.8/0.625 = 1.28s/格`，比成年慢 60%。
+##   ⇒ "人看着那么小、走得那么慢"就是这一处的后果，不是贴图或公式的问题。
+##
+## ⚠ **必须在 `add_child` 之后调**：`age_min` 是绝对值（游戏分），而 `lifespan_min` 要等
+##   `Aging.setup()` 用 `creature.rng` 摇出个体寿命（寿命有 ±15% 方差）才算得准。
+func _apply_player_start_age(p: Creature) -> void:
+	var ag := p.get_component(Aging) as Aging
+	if ag == null:
+		return
+	if p.def == null or p.def.life == null:
+		return
+	ag.age_min = ag.lifespan_min * SPAWN_AGE_RATIO
+	# 年龄变了 → 体型/外观要立刻跟上（`_refresh_growth_scale` 每 tick 也会刷，这里立刻生效免得第一帧是幼崽大小）
+	p._refresh_growth_scale()
+
+## 在草心外沿"朝水"扇区找一格可走非水空格。找不到返回 (-1,-1)。
+func _player_spawn_cell(center: Vector2, ang: float, ring_in: int,
+		rng: RandomNumberGenerator) -> Vector2i:
+	for _try in 200:
+		var a := ang + rng.randf_range(-SPAWN_BIAS_HALF, SPAWN_BIAS_HALF)
+		var d := float(rng.randi_range(ring_in, ring_in + SPAWN_RING_BAND))
+		var c := Vector2i(int(round(center.x + cos(a) * d)), int(round(center.y + sin(a) * d)))
+		if not GridManager.in_bounds(c.x, c.y):
+			continue
+		var cell := GridManager.cell_at(c.x, c.y)
+		if cell != null and cell.content == null \
+				and Terrain.walkable(cell.terrain) and cell.terrain != Terrain.WATER:
+			return c
+	return Vector2i(-1, -1)
 
 func _spawn_pig(at: Vector2i) -> Creature:
 	var pig: Creature = PIG_SCENE.instantiate()

@@ -1,0 +1,74 @@
+[gd_resource type="Resource" script_class="CreatureDef" load_steps=26 format=3]
+
+; 主角物种定义（2026-09-20）—— 与 pig_def.tres 同框架，只是「挂哪些组件」不同。
+;
+; 【为什么独立 def 就是隔离（零特判）】
+;   Perception.neighbors() 与 Reproduction._find_mate() 都按 `cr.def == creature.def`（**同一个 Resource 引用**）
+;   过滤同类。主角用这份独立 def → 野猪**看不到他**（不进猪群、不选他当配偶），
+;   所以全项目**没有任何 `is_player` 字段**，靠 def 身份区分。
+;
+; 【身体：人的结构（2026-09-20 二改）】原先直接复用猪的 6 部位（头/躯干/4 腿），
+;   现已换成**人形 6 部位**（data/part_*.tres）：头 / 胸腔 / 左臂 / 右臂 / 左腿 / 右腿。
+;   - 要害（is_vital）：头、胸腔 —— 归零即死。
+;   - 腿 = `stance`（至少一条活才能走）；臂 = `grasp`（抓握，**不影响行走**，为"伤臂不能制作"预留）。
+;   ⇒ 这套结构与"玩家信息面板"的人形素材（person/ribcage/arm/leg/brain）一一对应。
+;   ⚠ **需求数据仍复用猪的 `pig/data/need_*.tres`**（人猪需求同值，先不复制一份）。
+;
+; 【与猪的组件差异】
+;   换掉：brain       → player_brain（决策来源从"权重轮盘"改成"读键盘"）
+;   去掉：perception（无同类可感）· reproduction（主角不主动繁殖）
+;   保留：grid_mover / body / needs / personality / concealment / aging / lineage / grazing / drinking
+;   ⇒ 带 Lineage 是**安全的**：野猪看不到他 ⇒ 不会被选偶；不挂 Reproduction ⇒ 他自己也不发起。双保险。
+;
+; 【2026-09-20 补挂 grazing + drinking】原先想"吃/喝是下一批"，但那样主角会**饿死渴死**。
+;   两个组件的 requires() 都只要 Needs（已挂），且**都自己 tick、不依赖 Brain** ——
+;   所以主角**站着不动也会自己啃脚下的草、自己在岸边补水**（不需要额外的"按键进食"交互）。
+;   ⇒ 这正是"组件化"白捡的红利：加两种生存能力 = .tres 里加两个路径，零代码改动。
+;
+; 【身体/需求数据的复用情况】
+;   需求仍直接引用猪的 `pig/data/need_*.tres`（人猪需求同值）；
+;   部位已独立成 `creature/player/data/part_*.tres`（人形结构，与猪不同）。
+;   等第二种人形生物出现、发现部位数值真重复时，再按事实文档 §8.3 上提 BodyPlanDef —— **现在不提前抽象**。
+
+[ext_resource type="Script" path="res://creature/creature_def.gd" id="1_def"]
+[ext_resource type="Script" path="res://creature/components/grid_mover.gd" id="2_mover"]
+[ext_resource type="Script" path="res://creature/player/player_brain.gd" id="3_pbrain"]
+[ext_resource type="Script" path="res://creature/components/body.gd" id="4_body"]
+[ext_resource type="Script" path="res://creature/components/needs.gd" id="5_needs"]
+[ext_resource type="Script" path="res://creature/components/personality.gd" id="6_persona"]
+[ext_resource type="Script" path="res://creature/components/concealment.gd" id="7_conceal"]
+[ext_resource type="Script" path="res://creature/components/aging.gd" id="8_aging"]
+[ext_resource type="Script" path="res://creature/components/lineage.gd" id="9_lineage"]
+[ext_resource type="Texture2D" path="res://creature/player/art/character.png" id="10_tex"]
+[ext_resource type="Script" path="res://creature/components/grazing.gd" id="11_graze"]
+[ext_resource type="Script" path="res://creature/components/drinking.gd" id="12_drink"]
+[ext_resource type="Script" path="res://creature/components/sprint.gd" id="13_sprint"]
+[ext_resource type="Resource" path="res://creature/pig/pig_life.tres" id="t_life"]
+[ext_resource type="Resource" path="res://creature/pig/pig_temperament.tres" id="t_temp"]
+[ext_resource type="Resource" path="res://creature/player/data/part_head.tres" id="p_head"]
+[ext_resource type="Resource" path="res://creature/player/data/part_ribcage.tres" id="p_ribcage"]
+[ext_resource type="Resource" path="res://creature/player/data/part_arm_l.tres" id="p_arm_l"]
+[ext_resource type="Resource" path="res://creature/player/data/part_arm_r.tres" id="p_arm_r"]
+[ext_resource type="Resource" path="res://creature/player/data/part_leg_l.tres" id="p_leg_l"]
+[ext_resource type="Resource" path="res://creature/player/data/part_leg_r.tres" id="p_leg_r"]
+[ext_resource type="Resource" path="res://creature/pig/data/need_food.tres" id="n_food"]
+[ext_resource type="Resource" path="res://creature/pig/data/need_water.tres" id="n_water"]
+[ext_resource type="Resource" path="res://creature/pig/data/need_warmth.tres" id="n_warmth"]
+[ext_resource type="Resource" path="res://creature/pig/data/need_fatigue.tres" id="n_fatigue"]
+
+[resource]
+script = ExtResource("1_def")
+display_name = "你"
+texture = ExtResource("10_tex")
+map_color = Color(1, 0.85, 0.2, 1)
+personality = ExtResource("t_temp")
+life = ExtResource("t_life")
+; 【移动速度（2026-09-20 三调，问题5）】
+;   `move_interval` = 满速下**走一格要多少游戏秒**（PlayerBrain gate = move_interval / locomotion_speed）。
+;   0.8 → **0.5**：加快 1.6 倍（用户要"走快点"，同时保留"残废/疲劳/幼老会变慢"的机制）。
+;   ⚠ 不要靠"调 locomotion_speed"提速 —— 那是身体状态的聚合结果，改了会把"受伤减速"的差距一起压平。
+;   提速只动这个**基数**，让所有状态按同一比例变快（受伤时依然明显慢于健康）。
+move_interval = 0.5
+component_scripts = Array[Script]([ExtResource("2_mover"), ExtResource("3_pbrain"), ExtResource("4_body"), ExtResource("5_needs"), ExtResource("6_persona"), ExtResource("7_conceal"), ExtResource("13_sprint"), ExtResource("8_aging"), ExtResource("9_lineage"), ExtResource("11_graze"), ExtResource("12_drink")])
+body_parts = Array[BodyPartDef]([ExtResource("p_head"), ExtResource("p_ribcage"), ExtResource("p_arm_l"), ExtResource("p_arm_r"), ExtResource("p_leg_l"), ExtResource("p_leg_r")])
+active_needs = Array[NeedDef]([ExtResource("n_food"), ExtResource("n_water"), ExtResource("n_warmth"), ExtResource("n_fatigue")])

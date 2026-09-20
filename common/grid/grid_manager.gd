@@ -33,8 +33,10 @@ var _terrain_cells: Dictionary = {}   # StringName -> PackedVector2Array
 
 func _ready() -> void:
 	grid = Grid.new(WIDTH, HEIGHT)
-	for c in grid.cells.keys():
-		_free[c] = true
+	# ⚠ 这里**不**填 `_free`：开局全部格都是空的，但那是"地形还没生成"的**暂时**状态，
+	#   而 `_free` 按定义是"当前没有占格者的格"—— 两者不是一回事。
+	#   地形生成完（main.gd 发 terrain_changed）后由 rebuild_terrain_index() 一并重建，
+	#   那才是 `_free` 的正确时机与唯一写入口。
 	rebuild_terrain_index()
 	# GridManager 在 Autoload 顺序里排在 EventBus **之前** -> 此刻 EventBus 还没进树，连不上。
 	# 延后到本帧末接线，并**补一次重建**：主场景的 _ready 会在接线之前就把地形生成好。
@@ -73,6 +75,9 @@ func release(c: Vector2i, who) -> void:
 	_free[c] = true
 
 ## 随机空格。没有空格返回 Vector2i(-1, -1)（用 x<0 判断）。
+## 随机一个**可落格**（界内 + 地形可踩 + 无占格者）。
+## 【与"空格"是同一件事，不是两件】`_free` 由 `_rebuild_free()` 按这三条维护，
+##   所以这里不必再查一遍地形 —— 重复查会变成"两处各定义一次什么算可落"。
 func random_free_cell() -> Vector2i:
 	if _free.is_empty():
 		return Vector2i(-1, -1)
@@ -105,6 +110,27 @@ func rebuild_terrain_index() -> void:
 				arr.append(Vector2(c))
 		built[t] = arr
 	_terrain_cells = built
+	_rebuild_free()
+
+
+## 按**当前地形 + 当前占格**重建"空格集合"。
+##
+## 【为什么要看地形】"空格"的本意是"可以走进去的格"。把水也算成空格，
+##   任何"随机挑一格空的"逻辑就都可能挑到湖里 —— 那个 bug 一旦发生，
+##   表现是"生物凭空出现在水上"，而根因在两屏之外。所以在这里一次定死：
+##   **空格 = 界内 + 地形可踩 + 没有占格者。**
+##
+## 【唯一写入口】本函数是 `_free` 的唯一重建点；单格的增删仍走 occupy/release。
+##   三处若各写各的"什么算空"，迟早朝三个方向漂移（本项目已复发多次）。
+func _rebuild_free() -> void:
+	_free.clear()
+	for c in grid.cells.keys():
+		var cell: Grid.Cell = grid.cells[c]
+		if cell == null or cell.content != null:
+			continue
+		if not Terrain.walkable(cell.terrain):
+			continue
+		_free[c] = true
 
 ## 某个地形的全部格（只读视图；返回的是副本，调用方改不动缓存）。
 ## 没有这种地形 -> 空数组。查询"最近的某地形格"请自己遍历它 —— 代价 O(格数)。

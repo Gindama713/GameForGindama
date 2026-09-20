@@ -33,11 +33,62 @@ window/size/viewport_height=768
 window/size/borderless=true
 window/size/window_width_override=1280
 window/size/window_height_override=768
+; —— 全屏自适应（问题1 修复，2026-09-20）——
+; stretch/mode = canvas_items：整个 Canvas 层（世界 + CanvasLayer UI）一起缩放 → UI 与画面不脱节。
+; stretch/aspect = keep：**保持 1280:768 的宽高比**，多余方向留黑边，**绝不拉伸变形**。
+;   ⚠ 关键点：原配置**缺 aspect 行** → 默认是 "ignore"，窗口一变比例就整体拉伸（人变胖、格子变扁）。
+;   另外 window/stretch/scale_mode 保持默认 "fractional"（字与线稿不糊），
+;   像素字体靠 import 关掉抗锯齿 + 整数倍字号保证不糊（见 §2.4）。
+; 允许 F11 / Alt+Enter 切全屏（Godot 内置），也允许用户直接拉伸窗口。
 window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
 
 [gui]
 
 theme/custom="res://ui/game_theme.tres"
+
+[input]
+
+; —— 主角移动（2026-09-20）——
+; 项目首次使用 InputMap。原先相机平移硬编码 KEY_W/A/S/D + 方向键（camera_rig.gd）；
+; 主角出现后 WASD 归玩家，相机只在"没有跟随目标"时才吃键盘（见 camera_rig.gd 软跟随）。
+; 4 向网格（GridMover.DIRS = 上下左右），故 4 个 action 各绑 2 个物理键。
+; ⚠ 用 physical_keycode 而不是 keycode：与键盘布局无关（AZERTY 用户按同一个物理键也对得上）。
+move_up={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":87,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194320,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+move_down={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":83,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194322,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+move_left={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":65,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194319,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+move_right={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":68,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194321,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+
+; —— 疾跑（2026-09-20）——
+; 【用户拍板】按住 Shift = 快两倍，代价是体力（= 疲劳）掉得快 2.5 倍；跑空了要走一会儿才能再跑。
+; ⚠ 语义是"**按住**"（与按住方向键走路的 HOLD_MOVE 同构），不是"按一下切开关"。
+; ⚠ 同样用 physical_keycode：Shift 在左右手各一个物理键位（KEY_SHIFT 是"任意 Shift"的虚拟键码）。
+;   4194325 = KEY_SHIFT，Godot 会同时认左右两个 Shift 物理键。
+sprint={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194325,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
 
 [physics]
 

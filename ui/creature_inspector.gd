@@ -20,6 +20,12 @@ const CELL_BAR_SEGMENTS := 6   # 格子里的像素条段数（短一点，格�
 ## 像素字体是 11px 原生 + antialiasing=0（字体 import 里关掉了），只有 11/22/33 这类整数倍才不糊。
 const CELL_FONT_SIZE := 11     # 格子内容用原生尺寸：信息密集区，小一号才排得下
 
+## 主角的组标 —— 与 `main.gd` 的 `GROUP_PLAYER` **必须同名**。
+## 这是"UI 与编排层之间唯一的约定"：约定的是**一个字符串**，不是 `main.player` 这个引用，
+## 所以 UI 不认识 Main，Main 也不认识 UI（谁都不持有对方）。
+## ⚠ 改这里就要改 main.gd 的同名常量（两处，是刻意的"显式契约"而非隐含耦合）。
+const GROUP_PLAYER := "player"
+
 ## 大脑驱动名 → 中文（状态行显示）
 const DRIVE_LABEL := {
 	"wander": "游荡", "social": "合群", "separate": "独行",
@@ -178,8 +184,23 @@ func _on_title_gui_input(event: InputEvent) -> void:
 		position = new_pos
 
 # ---------------- 选取 ----------------
-func _on_clicked(c: Creature) -> void:
-	_creature = c
+## 主角**不进这个面板** —— 他点自己时走 `ui/player_panel.gd`（全身照档案）。
+##
+## 【为什么必须在这里挡一道】`main.gd` 生成主角时给他打了 `"player"` 组标，
+##   并写明了"通用检视窗靠这个组避开主角" —— 但**此前没有任何代码真的读过这个组**，
+##   所以点主角会**同时**弹出检视窗和玩家面板（两个窗口叠在一起），
+##   和注释里声明的行为不符。这里补上这一道，注释与行为才一致。
+## 【为什么用组而不是 `== main.player`】UI 不该认识 Main（那会把 UI 绑死在编排层上）。
+##   组是 Godot 原生机制，`is_in_group("player")` 一句就够，双方互不认识。
+## ⚠ 形参类型必须与信号声明一致（`EventBus.creature_clicked(creature: Node)`）——
+##   这里从前写 `Creature`，等于**单方面收窄了总线契约**：任何非 Creature 的 Node
+##   被 emit 出来就会在运行时炸在这里。总线是"不认识具体类型"的，订阅者也照做。
+func _on_clicked(c: Node) -> void:
+	if c is not Creature:
+		return                       # 防御：契约说 Node，就按 Node 收，再自行判断
+	if c.is_in_group(GROUP_PLAYER):
+		return                       # 主角有自己的档案面板，这里让位
+	_creature = c as Creature
 	_rebuild()
 	show()
 

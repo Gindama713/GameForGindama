@@ -77,11 +77,56 @@ func lethal_reason() -> String:
 func allows_movement() -> bool:
 	return can_locomote()
 
+## 移动速度协议（协议 6）：**腿断得越多走得越慢** = 存活 stance 肢体 / 全部 stance 肢体。
+##   四条腿断两条 → 0.5（半速）；断三条 → 0.25；全断 → 0（且 allows_movement() 已先否决）。
+## 没有 stance 肢体的物种（鱼/蛇）→ 1.0（不受限）。
+## ⚠ 这是**连续量**，与 allows_movement() 的 0/1 否决分工不同（见 creature_component.gd 协议 6 注释）。
+func move_speed_factor() -> float:
+	return stance_ratio()
+
+## 伤势染色协议（协议 7）：把**最重的那处伤**折算成一个颜色，供表现层给精灵染色。
+##
+## 【为什么取"最重"而不是全身平均】用户要看的是"哪只手受伤了"这个**事实** ——
+##   全身平均值会把"一只手断了另一只手完好"平摊成"轻伤"，把信息抹平。
+##   取最重的那处 = 屏幕上一眼能看出"这人身上有重伤"。
+## 【逐部位的具体位置】只在这个面板/精灵级别做不到（精灵是一张整图）——
+##   所以**逐部位上色**由 UI 层做（player_panel 的部位色块），这里给的是**整体色调**。
+func injury_tint() -> Color:
+	var worst := BodyPart.Severity.HEALTHY
+	for p in parts:
+		if p.severity() > worst:
+			worst = p.severity()
+	return SEVERITY_TINT.get(worst, Color(1, 1, 1, 1))
+
+## 伤势档位 → 整体染色。**与 UI 层同一套档位**（BodyPart.severity()），
+## 只是这里给的是"整只生物看起来如何"，UI 那边是"哪个部位看起来如何"。
+const SEVERITY_TINT := {
+	BodyPart.Severity.HEALTHY:  Color(1.00, 1.00, 1.00),
+	BodyPart.Severity.LIGHT:    Color(1.00, 0.93, 0.62),
+	BodyPart.Severity.MODERATE: Color(1.00, 0.78, 0.45),
+	BodyPart.Severity.SEVERE:   Color(1.00, 0.55, 0.50),
+	BodyPart.Severity.DISABLED: Color(0.85, 0.42, 0.42),
+}
+
+## 存活支撑肢体的比例（1 = 全好，0 = 全断）。无 stance 肢体 → 1。
+func stance_ratio() -> float:
+	var total := 0
+	var alive := 0
+	for p in parts:
+		if not p.def.has_limb_type("stance"):
+			continue
+		total += 1
+		if p.hp > 0.0:
+			alive += 1
+	if total == 0:
+		return 1.0
+	return float(alive) / float(total)
+
 func debug_state() -> String:
 	var pstr: Array[String] = []
 	for p in parts:
 		pstr.append("%s%.0f" % [p.def.label, p.hp])
-	return "血=%.0f/%.0f 部位{%s}" % [total_hp(), total_max(), " ".join(pstr)]
+	return "血=%.0f/%.0f 部位{%s} 腿%.0f%%" % [total_hp(), total_max(), " ".join(pstr), stance_ratio() * 100.0]
 
 # ---------------- 查询 ----------------
 
