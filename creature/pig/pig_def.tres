@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="CreatureDef" load_steps=29 format=3]
+[gd_resource type="Resource" script_class="CreatureDef" load_steps=30 format=3]
 
 [ext_resource type="Script" path="res://creature/creature_def.gd" id="1_def"]
 [ext_resource type="Script" path="res://creature/components/grid_mover.gd" id="2_mover"]
@@ -16,6 +16,7 @@
 [ext_resource type="Script" path="res://creature/components/drinking.gd" id="16_drink"]
 [ext_resource type="Script" path="res://creature/components/sprint.gd" id="17_sprint"]
 [ext_resource type="Script" path="res://creature/components/thermal.gd" id="18_thermal"]
+[ext_resource type="Script" path="res://creature/components/sleep.gd" id="19_sleep"]
 [ext_resource type="Resource" path="res://creature/pig/pig_life.tres" id="t_life"]
 [ext_resource type="Resource" path="res://creature/pig/pig_temperament.tres" id="t_temp"]
 [ext_resource type="Resource" path="res://creature/pig/data/part_head.tres" id="p_head"]
@@ -36,6 +37,6 @@ texture = ExtResource("4_tex")
 personality = ExtResource("t_temp")
 life = ExtResource("t_life")
 move_interval = 1.0
-component_scripts = Array[Script]([ExtResource("2_mover"), ExtResource("3_brain"), ExtResource("7_body"), ExtResource("8_needs"), ExtResource("9_persona"), ExtResource("10_perc"), ExtResource("11_conceal"), ExtResource("12_graze"), ExtResource("16_drink"), ExtResource("17_sprint"), ExtResource("18_thermal"), ExtResource("13_aging"), ExtResource("14_lineage"), ExtResource("15_repro")])
+component_scripts = Array[Script]([ExtResource("2_mover"), ExtResource("3_brain"), ExtResource("7_body"), ExtResource("8_needs"), ExtResource("9_persona"), ExtResource("10_perc"), ExtResource("11_conceal"), ExtResource("12_graze"), ExtResource("16_drink"), ExtResource("17_sprint"), ExtResource("18_thermal"), ExtResource("19_sleep"), ExtResource("13_aging"), ExtResource("14_lineage"), ExtResource("15_repro")])
 body_parts = Array[BodyPartDef]([ExtResource("p_head"), ExtResource("p_torso"), ExtResource("p_foreleg_l"), ExtResource("p_foreleg_r"), ExtResource("p_hindleg_l"), ExtResource("p_hindleg_r")])
 active_needs = Array[NeedDef]([ExtResource("n_food"), ExtResource("n_water"), ExtResource("n_warmth"), ExtResource("n_fatigue")])

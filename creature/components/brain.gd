@@ -36,7 +36,11 @@ const FATIGUE_REST_WEIGHT := 0.8   # 疲劳→休息意愿（减速而非致命�
 const IDLE_BASE := 0.35            # 发呆基线（保证「走」有间隙，不至于一直动）
 const IDLE_LOW_ENERGY := 0.6       # 低活力更爱站着发呆
 const NIGHT_REST_BONUS := 3.0      # 夜晚→休息加权（远大于白天 → 夜里基本都在睡）
-const SLEEP_RECOVER_RATE := 0.2    # 休息/睡觉时疲劳回复速率（游戏分钟）
+## ⚠ **`SLEEP_RECOVER_RATE` 已删除**（2026-09-21 阶段 2）。
+##   它原来是 `0.2`/游戏分 —— 一夜（600 分）回 **120 点**，而满槽只有 **100 点**
+##   ⇒ **猪的疲劳永远顶在 100，"满槽撑 2 个游戏日"这个设计从来没生效过。**
+##   现在恢复速率归 `Sleep.RECOVER_PER_MIN`（0.1）管 —— 睡眠时长与恢复速率**同源**，
+##   不再一个住在 `Brain`、一个住在别处。本组件**不再自己回疲劳**。
 const FATIGUE_ID := "fatigue"      # 用哪个需求当「疲劳」—— Brain 唯一需要的需求 id（别再散写字符串）
 ## 觅食驱动权重 = 饥饿度(0..1) × FEED_GAIN。
 ## **已实测调过**：4.0 时权重被轮盘摊薄 -> 饿着的猪也只有约 1/3 的决策朝草走；
@@ -120,11 +124,29 @@ const FLEE_SPRINT_HOLD := 0.5
 ##     粘性才是把它从 1.29 推到 2.07 的主因，权重只是次要项。
 const HUDDLE_GAIN := 5.0
 
-## 休息时长（游戏分钟）：白天是「短歇」、夜里是「长睡」（用户 2026-09-19 拍板「拉开昼夜反差」）
-const REST_DAY_MIN := 1.5
-const REST_DAY_MAX := 5.0
-const REST_NIGHT_MIN := 60.0
-const REST_NIGHT_MAX := 150.0
+## 休息的**重掷间隔**（游戏分钟，乘以 `base`）。
+##
+## ══════════════════════════════════════════════════════════════════
+## 【2026-09-21 阶段 2：这两个值不再是"睡多久"】
+## ══════════════════════════════════════════════════════════════════
+##   改之前：`rest` 一次买断 60~150 游戏分的静止，`_recover_while_resting()` 就在这段
+##     静止里按固定速率回疲劳 —— 也就是**用"下次决策在多久之后"来表示"睡多久"**。
+##     这是个 hack，它带来两个真问题：
+##       ① 睡着的猪**叫不醒**：威胁走过来也得等这 60~150 分走完才反应；
+##       ② 睡眠时长与恢复速率**绑死**（要睡更久只能把间隔调更长）。
+##   现在："睡多久"归 `Sleep` 组件管（回够疲劳 / 被吵醒 / 超上限），
+##     决策间隔退化成单纯的"**别每帧重掷轮盘**"。
+##   ⇒ 所以这里只需要一个**短间隔**，醒来后能立刻重新决策。
+##
+## ⚠ 保留"1 次 `randf_range` 调用"这件事**是有意的**：每个生物有自己的 `creature.rng`，
+##   调用**次数**一变，它后面所有随机数就整体错位（本项目踩过：`Thermal.setup()` 多消耗一次
+##   `host.rng`，8 只猪的寿命就从 (6,7,5,5,6,6,6,6) 变成 (6,7,5,5,6,5,5,6)）。
+##   所以这里只改**区间**、不改**次数**。
+const REST_RECHECK_MIN := 1.0
+const REST_RECHECK_MAX := 3.0
+## 白天允许躺下补觉的疲劳门槛（低于它 = "累垮了"）。
+## 见 `_decide_and_act()` 的 `rest` 分支 —— 白天默认只短歇、不睡觉，这是唯一的例外。
+const NAP_FATIGUE := 0.45
 const JITTER := 0.35               # 移动间隔的随机抖动比例（步频不规律）
 
 var _timer: float = 0.0
@@ -154,6 +176,20 @@ func setup(host: Node) -> void:
 func tick(dt: float) -> void:
 	# 不判断生死 —— 死了就不会被 tick（Creature.die() 已把宿主摘出时钟）
 	_flee_memory = maxf(_flee_memory - dt, 0.0)     # 威胁记忆随真实时间衰减
+
+	# —— 睡眠门闩（2026-09-21 阶段 2）：睡着时**不做任何决策** ——
+	# 【为什么挡在这里而不是挡在"走路"那一步】睡着的猪不该重掷轮盘：
+	#   ① 重掷会消耗 `creature.rng`，让"睡着"这件与随机无关的事污染随机序列；
+	#   ② 更实际的是——醒来那一刻该**立刻**能行动，而不是继续执行睡觉前的那个长计时器。
+	# 【为什么不 `_timer -= dt`】冻结计时器：醒来后 `_timer` 从入睡时的剩余量接着走，
+	#   若已归零就**下一帧立刻决策**，这就是"被吵醒能马上跑"。
+	# ⚠ `Sleep` 是**可选**组件：没挂它的物种（将来别的 AI）照旧跑轮盘，本组件不静默崩。
+	var sl := creature.get_component(Sleep) as Sleep
+	if sl != null and not sl.can_act():
+		_want_sprint = false          # 躺着不可能在跑 —— 顺手撤掉门闩，别让 Sprint 白扣体力
+		_sprint_hold = 0.0
+		return
+
 	_sprint_hold = maxf(_sprint_hold - dt, 0.0)
 	if _sprint_hold <= 0.0:
 		_want_sprint = false
@@ -168,7 +204,8 @@ func tick(dt: float) -> void:
 	if _timer <= 0.0:
 		_decide_and_act()
 		_reset_timer()
-	_recover_while_resting(dt)      # 处在「休息」时睡觉回疲劳
+	# ⚠ 这里**不再有 `_recover_while_resting(dt)`** —— 回疲劳已归 `Sleep` 组件。
+	#   本组件只剩"困了想睡"这一半（`rest` 驱动），"睡着了怎么回"是另一半。
 
 # ---------------- 决策 ----------------
 
@@ -389,7 +426,30 @@ func _decide_and_act() -> void:
 				return
 			_wander_step(mover, dirs)
 		"rest":
-			last_drive = "rest"            # 原地休息（睡觉）
+			# 原地休息（2026-09-21 阶段 2 改）。
+			#
+			# ══════════════════════════════════════════════════════════════
+			# 【白天 vs 夜里 —— 用户 2026-09-19 拍板「拉开昼夜反差」，这里必须保留】
+			# ══════════════════════════════════════════════════════════════
+			#   · **夜里**：`rest` = 想睡觉 → 请求 `Sleep`（睡多久 / 被什么吵醒归它管）。
+			#   · **白天**：`rest` = **短歇**（站着不动一会儿），**不真的躺下**。
+			#     ⚠ 这一条是实测补回来的：一开始白天也调 `Sleep.start()`，结果一只 85% 疲劳的猪
+			#       午间小憩会**一路睡到 95%**（0.1/分 ⇒ 约 100 游戏分），
+			#       实测**白天睡眠占比冲到 39.7%**、夜里 61.2% —— 昼夜反差基本被抹平。
+			#       改前（旧版）白天是 `REST_DAY_MIN~MAX` = 1.5~5 游戏分的短歇。
+			#   · **唯一的例外：累垮了**（疲劳 < `NAP_FATIGUE`）→ 白天也允许补觉。
+			#     否则一只夜里被反复吵醒的猪要硬撑到晚上才能恢复，那太苛刻。
+			#     （实测当前猪群疲劳在 70~100% 之间，所以这条**平时不触发** ——
+			#      它是留给"将来有捕食者、受伤、被追"的安全阀，不是当下的主要路径。）
+			#
+			# 【不困怎么办】`start()` 会返回 false（疲劳 ≥ 95%）—— 那就**原地歇着**，
+			#   与改前一致（改前疲劳满时选到 rest 也是躺着不回血）。不退化游荡，
+			#   因为 `huddle` 分支也会落到这里（"想抱、已经抱到了、那就睡"），
+			#   退化游荡会把刚聚起来的一群又拆散（见 huddle 分支的长注释）。
+			last_drive = "rest"
+			var sl_rest := creature.get_component(Sleep) as Sleep
+			if sl_rest != null and (TimeSystem.is_night() or fatigue_ratio < NAP_FATIGUE):
+				sl_rest.start()
 		"idle":
 			last_drive = "idle"            # 原地发呆（短歇）
 		_:
@@ -481,7 +541,8 @@ func _dir_from_nearest(ns: Array) -> Vector2:
 		return Vector2.ZERO
 	return away.normalized()
 
-## 决策间隔：移动类带抖动；发呆=短歇；休息=一段（有上限）睡眠；**被减速时移动间隔等比放大**。
+## 决策间隔：移动类带抖动；发呆=短歇；**休息=一段很短的"重掷间隔"**（睡眠时长归 `Sleep`）；
+## **被减速时移动间隔等比放大**。
 ##
 ## 【速度定义域只有一处 —— 2026-09-20 统一】
 ##   从前本函数自己算「`aging.speed_factor()` × 疲劳放大」这套减速，
@@ -509,16 +570,18 @@ func _reset_timer() -> void:
 	var person := creature.get_component(Personality) as Personality
 	if person != null:
 		energy = person.get_trait("energy")
-	var fr := _fatigue_ratio()
+	# ⚠ 这里**不再读疲劳比**（2026-09-21 阶段 2）：从前 `rest` 的间隔要
+	#   `× (1 + (1-疲劳比) × 0.5)`（越累睡得越久），那是"用间隔表示睡眠时长"的一部分，
+	#   已随睡眠归 `Sleep` 而一起删除。`Sleep` 自己按疲劳比决定何时醒。
 
 	var t: float = base
 	match last_drive:
 		"rest":
-			# 白天=短歇、夜里=长睡（很少醒）；越累睡得越久
-			var at_night := TimeSystem.is_night()
-			var lo: float = REST_NIGHT_MIN if at_night else REST_DAY_MIN
-			var hi: float = REST_NIGHT_MAX if at_night else REST_DAY_MAX
-			t = creature.rng.randf_range(lo, hi) * (1.0 + (1.0 - fr) * 0.5)
+			# **只决定"多久之后再重掷轮盘"，不再决定"睡多久"**（见 REST_RECHECK_* 的长注释）。
+			# 真正的睡眠时长归 `Sleep`：回够疲劳 / 被吵醒 / 超 720 分上限。
+			# ⚠ 睡着时本函数根本不会被调用（`tick()` 的门闩挡在前面），
+			#   所以这个值只在"醒着但选了休息"（例如不困的猪）时起作用。
+			t = base * creature.rng.randf_range(REST_RECHECK_MIN, REST_RECHECK_MAX)
 		"idle":
 			t = base * creature.rng.randf_range(0.4, 3.0)
 		"blocked":
@@ -538,9 +601,12 @@ func debug_state() -> String:
 	return "上次=%s 下次 %.1fs" % [last_drive, _timer]
 
 ## 疲劳满足度（1=精神饱满，0=精疲力竭）。无 Needs 组件 / 无 fatigue 需求 → 返回 1.0（不影响行为）。
-## ⚠ 只用于**睡眠时长**（rest 越想睡越久）——**不再用于移动减速**：
-##   移动减速走协议 6（`Needs.move_speed_factor()` 经 `Creature.locomotion_speed()` 聚合）。
-##   两处用途不同，不是重复定义：一个是"睡多久"，一个是"动多慢"。
+##
+## ⚠ 用途已收窄（2026-09-21 阶段 2）：现在**只喂 `rest_w` 这条驱动权重**（"越累越想睡"）。
+##   从前它还喂"睡多久"（`_reset_timer` 里那个 `× (1 + (1-fr) × 0.5)`）——
+##   那个已随睡眠归 `Sleep` 而删除。
+##   移动减速一直走协议 6（`Needs.move_speed_factor()` 经 `Creature.locomotion_speed()` 聚合），
+##   从来没在本函数里 —— "睡多久"与"动多慢"是两件事。
 func _fatigue_ratio() -> float:
 	var needs_comp := creature.get_component(Needs) as Needs
 	if needs_comp == null:
@@ -549,13 +615,3 @@ func _fatigue_ratio() -> float:
 	if fn == null:
 		return 1.0
 	return fn.ratio()
-
-## 睡觉恢复疲劳：处于「休息」状态时按速率回复（需 Needs + fatigue 需求，缺则不动）。
-## 走 Needs.restore() 协议，不认识它的内部结构；将来「吃/喝」也走同一个入口。
-func _recover_while_resting(dt: float) -> void:
-	if last_drive != "rest":
-		return
-	var needs_comp := creature.get_component(Needs) as Needs
-	if needs_comp == null:
-		return
-	needs_comp.restore(FATIGUE_ID, SLEEP_RECOVER_RATE * dt)

@@ -37,8 +37,18 @@ extends CreatureComponent
 ##     · **走过来的东西**才吵醒你 —— 这才是真正的威胁；
 ##     · 而且它顺手给了高草一个新用途：**猪藏进高草你就感知不到**（`Perception._scan()`
 ##       跳过隐蔽者），所以"在草丛里睡"天然更安静。
+##
+##   ★★ **但"在动"还不够 —— 必须是"新来的在动"**（2026-09-21 阶段 2 实测推翻）★★
+##     只判"在动"对**独居**的主角够用，一给**成群**的猪挂上就活锁：
+##     A 躺下 → B 挪一下 → A 醒 → A 起身 → B 躺下 → A 挪一下 → B 醒 → …
+##     实测 1.5 个游戏日：躺下 665 次、**656 次（98.6%）被"附近有动静"吵醒**、
+##     夜间睡眠占比 **93% → 15.2%**、疲劳从 100% **单调掉到 24%**（个别 0%）。
+##     ⇒ 判据改成「**新来的**在动」：躺下那一刻已经在半径内的同伴进 `_known_nearby`，
+##       他们对你是**背景**不是威胁；只有**从外面进来的**才吵醒你。
+##       这与真实睡眠的「习惯化」是同一件事。**完整论证见 `_check_intruder()`**。
+##
 ##     ⚠ 现在场上还没有真正的敌人，所以"任何生物"都算 —— 将来有捕食者时，
-##       应该把判据收窄成"捕食者"（见 `_intruder_nearby()` 的注释）。
+##       应该把判据收窄成"捕食者"（见 `_check_intruder()` 的注释）。
 ##
 ## ══════════════════════════════════════════════════════════════════
 ## 四、它管什么 / 不管什么
@@ -97,6 +107,9 @@ var _timer := 0.0          # 当前状态的剩余/已用时间（游戏分）�
 var _slept := 0.0          # 本次已睡多久（游戏分）
 var _just_woke := false    # 本帧刚醒（供 `SleepDirector` 立刻把时间倍速降回来）
 var _wake_reason := ""     # 唤醒原因（日志与 UI 用）
+## 「背景名单」：**躺下那一刻**已经在唤醒半径内的生物 id。
+## 他们动不会吵醒你（见 `_check_intruder()` 的长注释 —— 这是猪群活锁的解法）。
+var _known_nearby := {}
 
 func requires() -> Array:
 	# 硬依赖两条：
@@ -111,6 +124,7 @@ func setup(host: Node) -> void:
 	_slept = 0.0
 	_just_woke = false
 	_wake_reason = ""
+	_known_nearby.clear()
 
 # ---------------- 生命周期 ----------------
 
@@ -121,7 +135,7 @@ func tick(dt: float) -> void:
 			_timer -= dt
 			_slept += dt
 			# 入睡途中也可能被吵醒 —— 这时候最便宜（还没睡进去）
-			if _intruder_nearby():
+			if _check_intruder():
 				_wake("附近有动静", State.AWAKE)
 			elif _timer <= 0.0:
 				_state = State.ASLEEP
@@ -129,9 +143,9 @@ func tick(dt: float) -> void:
 		State.ASLEEP:
 			_slept += dt
 			_recover(dt)
-			if _intruder_nearby():
+			if _check_intruder():
 				_wake("附近有动静", State.WAKING)
-			elif _fatigue_ratio() >= WAKE_FATIGUE_RATIO:
+			elif fatigue_ratio() >= WAKE_FATIGUE_RATIO:
 				_wake("睡够了", State.WAKING)
 			elif _slept >= MAX_SLEEP_MIN:
 				_wake("睡太久了", State.WAKING)
@@ -175,20 +189,31 @@ func slept_minutes() -> float:
 # ---------------- 对外动作 ----------------
 
 ## 开始睡觉。返回 false = 现在不该睡（已经睡着 / 不困）。
+##
 ## 【为什么不困也允许】用户原话是"想睡觉的时候就开始睡觉" —— 所以**不设硬门槛**，
-##   只是"已经睡够了"时给个提示并拒绝（否则会出现"躺下一秒就起来"的空动作）。
+##   只是"已经睡够了"时拒绝（否则会出现"躺下一秒就起来"的空动作）。
+##
+## ⚠ **拒绝时不打日志**（2026-09-21 阶段 2 改）：`Brain` 的 `rest` 驱动每秒都会调本函数，
+##   如果在这里打日志，一只 95% 疲劳的猪会**每秒刷一行**「还不困」。
+##   ⇒ 组件只回答"能不能"，**要不要告诉玩家是调用方的事**（`PlayerBrain` 会打，
+##     因为玩家按了键就该有反馈；AI 不需要）。
 func start() -> bool:
-	if is_sleeping():
-		return false
-	if _fatigue_ratio() >= WAKE_FATIGUE_RATIO:
-		Log.ev("睡眠", "%s 还不困（疲劳 %.0f%%）" % [creature.tag(), _fatigue_ratio() * 100.0])
+	if not can_sleep():
 		return false
 	_state = State.ONSET
 	_timer = ONSET_MIN
 	_slept = 0.0
 	_wake_reason = ""
-	Log.ev("睡眠", "%s 躺下准备睡（疲劳 %.0f%%）" % [creature.tag(), _fatigue_ratio() * 100.0])
+	_snapshot_nearby()          # 记下"身边已经是谁" —— 他们之后怎么动都不吵醒我
+	Log.ev("睡眠", "%s 躺下准备睡（疲劳 %.0f%%）" % [creature.tag(), fatigue_ratio() * 100.0])
 	return true
+
+## 现在**睡得着**吗：没在睡，且还没睡够（疲劳 < `WAKE_FATIGUE_RATIO`）。
+##
+## 这是"困意"的唯一判据 —— 调用方（`Brain` 的 rest 驱动 / 玩家的 R 键）先问它，
+## 再决定要不要真的 `start()`。
+func can_sleep() -> bool:
+	return not is_sleeping() and fatigue_ratio() < WAKE_FATIGUE_RATIO
 
 ## 主动叫醒（玩家按键 / 将来被攻击）。
 func wake_up(reason: String = "主动醒来") -> void:
@@ -201,9 +226,9 @@ func wake_up(reason: String = "主动醒来") -> void:
 ## 协议 3：调试自述。
 func debug_state() -> String:
 	if _state == State.AWAKE:
-		return "%s 清醒 疲劳%.0f%%" % [TAG, _fatigue_ratio() * 100.0]
+		return "%s 清醒 疲劳%.0f%%" % [TAG, fatigue_ratio() * 100.0]
 	return "%s %s 已睡%.0f分 疲劳%.0f%%" % [
-		TAG, state_text(), _slept, _fatigue_ratio() * 100.0]
+		TAG, state_text(), _slept, fatigue_ratio() * 100.0]
 
 ## 协议 6：**醒神期走得慢**（被提前吵醒的代价）。
 func move_speed_factor() -> float:
@@ -221,6 +246,7 @@ func _wake(reason: String, next: State) -> void:
 	_timer = WAKING_MIN if next == State.WAKING else 0.0
 	_just_woke = true
 	_wake_reason = reason
+	_known_nearby.clear()       # 醒了就不再有"背景名单"，下次躺下重新快照
 	Log.ev("睡眠", "%s 醒了（%s），已睡 %.0f 游戏分" % [creature.tag(), reason, _slept])
 	_slept = 0.0
 
@@ -231,24 +257,64 @@ func _recover(dt: float) -> void:
 		return
 	needs.restore(FATIGUE_ID, RECOVER_PER_MIN * dt)
 
-## 半径 `WAKE_RADIUS` 内有没有**正在移动**的生物。见文件头第三节。
+## 半径 `WAKE_RADIUS` 内有没有**新来的、正在移动的**生物。见文件头第三节。
+##
+## ══════════════════════════════════════════════════════════════════
+## ★★ 为什么必须判"新来的"，而不能只判"在动"（2026-09-21 阶段 2 实测推翻）★★
+## ══════════════════════════════════════════════════════════════════
+##   阶段 1 只判「半径内有东西在动」，主角一个人睡时看着没问题。**一给猪挂上就炸了**：
+##   猪是**成群**的（家庭 4~5 只挤在几格内），于是
+##     A 躺下 → B 挪一下 → A 被吵醒 → A 起身 → B 躺下 → A 挪一下 → B 被吵醒 → …
+##   整夜互相打断，**活锁**。实测 1.5 个游戏日：
+##     · 躺下 665 次，其中 **656 次（98.6%）**是被"附近有动静"吵醒，只有 105 次真睡着
+##     · **夜间睡眠占比 93% → 15.2%**（旧版猪夜里基本一直在睡）
+##     · 疲劳**单调下降**：100% → 24%，个别掉到 **0%**（只出不进）
+##   ⇒ 判据必须是「**异常**」而不是「**动静**」：
+##     把**入睡那一刻**已经在半径内的同伴记进 `_known_nearby` —— 他们对你是**背景**，不是威胁。
+##     只有**从外面进来的**才吵醒你。这与真实睡眠的「习惯化」是同一件事：
+##     熟悉的动静（同窝的呼吸、翻身）不会弄醒你，陌生的脚步才会。
+##
+##   ⚠ **名单只记不刷新**（`_check_intruder()` 里不把新来的加进去），这是故意的：
+##     若来了就记，那么"悄悄走近、站住、再动"的生物永远不会触发唤醒 ——
+##     而"悄悄走近"恰恰是这套机制最该抓的东西。
+##     代价是：一群猪如果入睡时散得比较开（有的在 4 格外），会先被彼此吵醒一两轮，
+##     等大家都躺下（睡着的不动 ⇒ 不再吵别人）就收敛。**收敛，不是活锁** —— 这是关键区别。
 ##
 ## ⚠ 现在**任何生物**都算 —— 场上还没有真正的敌人。
 ##   将来有捕食者时，把这里换成"按 def 问捕食关系"，而不是"任何生物"。
-func _intruder_nearby() -> bool:
+func _check_intruder() -> bool:
 	var perc := creature.get_component(Perception) as Perception
 	if perc == null:
 		return false
+	var found := false
 	for c in perc.nearby_creatures(WAKE_RADIUS):
 		var cr := c as Creature
 		if cr == null:
 			continue
+		if _known_nearby.has(cr.id):
+			continue          # 入睡时就在身边的同伴 = 背景，不吵醒
 		var mv := cr.get_component(GridMover) as GridMover
 		if mv != null and mv.moved_recently(MOTION_WINDOW):
-			return true
-	return false
+			found = true
+	return found
 
-func _fatigue_ratio() -> float:
+## 把当前半径内的生物记进「背景名单」。**在躺下的那一刻调用一次**（见 `_check_intruder()`）。
+func _snapshot_nearby() -> void:
+	_known_nearby.clear()
+	var perc := creature.get_component(Perception) as Perception
+	if perc == null:
+		return
+	for c in perc.nearby_creatures(WAKE_RADIUS):
+		var cr := c as Creature
+		if cr != null:
+			_known_nearby[cr.id] = true
+
+## 疲劳满足度（1 = 精神饱满，0 = 精疲力竭）。
+## 无 `Needs` 组件 / 无 fatigue 需求 → 返回 1.0（= 永远"睡够了"，不会误触发睡眠）。
+##
+## 【为什么是公开的】`can_sleep()` 的判据就是它，而**调用方要能解释"为什么睡不着"** ——
+##   玩家按了 R 却只看到"没反应"是不能接受的（`PlayerBrain` 会读它打一行日志）。
+func fatigue_ratio() -> float:
 	var needs := creature.get_component(Needs) as Needs
 	if needs == null:
 		return 1.0
