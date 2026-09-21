@@ -15,8 +15,34 @@ extends Node
 
 const GRASS_DEF: GrassDef = preload("res://world/grass/grass_common.tres")
 
+## 草场推进的**批处理间隔**（游戏分）。2026-09-21 加。
+##
+## ── 【为什么不能每 tick 都推】──
+##   本推进是 **O(草格数)** 的（逐格算再生、成熟格再掷扩散），而 `TimeSystem.tick`
+##   **每物理帧都发**（60 次/真实秒，每次 dt ≈ 0.017 游戏分）。实测：
+##     · 462 格草时一次推进 **0.53 ~ 1.04 ms**（≈1.1~2.2 µs/格，**线性**）
+##     · 60 次/秒 ⇒ **32 ms/秒 ≈ 3.2% 单核**，而且**随草格数线性增长**
+##     · 外推：草长到约 **7,400 ~ 14,500 格**时，单是这一步就会吃满一整帧（16.67 ms）
+##   而 `Terrain.DEFS` 里 **`unknown`（黑土）的 `plantable = true`** ⇒
+##   草**可以**扩散到全图 16900 格 —— **这个天花板当时没有任何代码在拦**。
+##
+## ── 【为什么批处理是等价的】──
+##   草的一切都是**累积器**（`_recover_acc` / `_spread_acc`），推进量与 dt 成正比
+##   ⇒ 攒起来一起算，结果与逐帧算**等价**。唯一的差别是"草只在白天长"那条判断
+##   每批只求值一次，于是天亮/天黑那一批最多有 `本值` 的边界误差（取 1.0 时 = 一天的 0.07%）。
+##
+## ── 【取 1.0 的两个好处】──
+##   ① 调用次数降 **60 倍** ⇒ 实测成本 32 ms/秒 → **0.53 ms/秒**，
+##      天花板从 7k~14k 格抬到 **44 万格以上**（远超全图 16900），等于把这条扩展风险拆掉了；
+##   ② 同一批里变动的草格会**合并成一次重绘**（见 `EventBus.grass_changed`）——
+##      与 `GrassLayer` 的拆层配合，把原来的周期性重绘尖峰也一并压下去了。
+const SIM_INTERVAL_MIN := 1.0
+
 var tiles: Dictionary = {}                 # Vector2i -> GrassTile
 var rng := RandomNumberGenerator.new()     # 草场专用随机源（扩散/选格），与生物个体 RNG 分离
+
+## 距下次推进攒了多久（游戏分）。见 `SIM_INTERVAL_MIN`。
+var _sim_acc: float = 0.0
 
 func _ready() -> void:
 	rng.seed = WorldSeed.value
@@ -26,6 +52,7 @@ func _ready() -> void:
 ## 由 Main 在 generate 之后调用一次。
 func seed_existing(grid: Grid) -> void:
 	tiles.clear()
+	_sim_acc = 0.0
 	for y in grid.height:
 		for x in grid.width:
 			var cell := grid.get_cell(Vector2i(x, y))
@@ -35,10 +62,23 @@ func seed_existing(grid: Grid) -> void:
 				_establish(Vector2i(x, y), GRASS_DEF.max_bites)
 
 # ---------------- 每帧推进 ----------------
+
+## 只负责**攒时间**，攒够一批才真正推进（见 `SIM_INTERVAL_MIN`）。
 func _on_tick(dt: float) -> void:
+	_sim_acc += dt
+	if _sim_acc < SIM_INTERVAL_MIN:
+		return
+	var step := _sim_acc
+	_sim_acc = 0.0
+	_simulate(step)
+
+## 真正推进一批。`dt` 是这一批累积的游戏分。
+func _simulate(dt: float) -> void:
 	# 先收集要扩散出的新格（遍历中不修改 tiles，避免迭代器失效）
 	var to_add: Array[Vector2i] = []
-	for coord in tiles.keys():
+	# ⚠ **直接迭代 `tiles`**（`for k in dict` 不分配新数组）。
+	#   不要写 `tiles.keys()` —— 那会每次分配一个 N 元素的新数组，白制造 GC 压力。
+	for coord in tiles:
 		var t: GrassTile = tiles[coord]
 		_recover(t, dt)
 		if t.is_mature():

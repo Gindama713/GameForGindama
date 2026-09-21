@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="CreatureDef" load_steps=26 format=3]
+[gd_resource type="Resource" script_class="CreatureDef" load_steps=29 format=3]
 
 ; 主角物种定义（2026-09-20）—— 与 pig_def.tres 同框架，只是「挂哪些组件」不同。
 ;
@@ -16,8 +16,18 @@
 ;
 ; 【与猪的组件差异】
 ;   换掉：brain       → player_brain（决策来源从"权重轮盘"改成"读键盘"）
-;   去掉：perception（无同类可感）· reproduction（主角不主动繁殖）
+;   去掉：reproduction（主角不主动繁殖）
 ;   保留：grid_mover / body / needs / personality / concealment / aging / lineage / grazing / drinking
+;   后加：sprint（疾跑）· thermal（体温，2026-09-21）
+;
+; 【2026-09-21 补回 perception —— 修正下面那条"无同类可感"的判断】
+;   原先去掉 perception 的理由是"世界上没有第二个人，感知不到同类"。
+;   但 `Perception` 现在多了一个用途：`nearby_count()` —— **不分物种**地数身边有几具身体，
+;   供 `Thermal` 算**抱团取暖**的减免。而 `Thermal.requires()` 把它声明成了**硬依赖**
+;   （缺了就是配置错误，启动期直接报出来，而不是让主角永远觉得孤单、永远最冷）。
+;   ⇒ 主角挂上它之后：`neighbors()` 仍然恒为空（确实没有第二个人）、`threats()` 也恒为空
+;     （`_scan()` 会跳过自己），所以**对既有行为零影响**；唯一的作用就是抱团取暖。
+;     这正是"人也是同理"的落点 —— 主角挨着猪群睡觉，保暖同样掉得慢。
 ;   ⇒ 带 Lineage 是**安全的**：野猪看不到他 ⇒ 不会被选偶；不挂 Reproduction ⇒ 他自己也不发起。双保险。
 ;
 ; 【2026-09-20 补挂 grazing + drinking】原先想"吃/喝是下一批"，但那样主角会**饿死渴死**。
@@ -43,6 +53,9 @@
 [ext_resource type="Script" path="res://creature/components/grazing.gd" id="11_graze"]
 [ext_resource type="Script" path="res://creature/components/drinking.gd" id="12_drink"]
 [ext_resource type="Script" path="res://creature/components/sprint.gd" id="13_sprint"]
+[ext_resource type="Script" path="res://creature/components/sleep.gd" id="16_sleep"]
+[ext_resource type="Script" path="res://creature/components/perception.gd" id="14_perc"]
+[ext_resource type="Script" path="res://creature/components/thermal.gd" id="15_thermal"]
 [ext_resource type="Resource" path="res://creature/pig/pig_life.tres" id="t_life"]
 [ext_resource type="Resource" path="res://creature/pig/pig_temperament.tres" id="t_temp"]
 [ext_resource type="Resource" path="res://creature/player/data/part_head.tres" id="p_head"]
@@ -69,6 +82,6 @@ life = ExtResource("t_life")
 ;   ⚠ 不要靠"调 locomotion_speed"提速 —— 那是身体状态的聚合结果，改了会把"受伤减速"的差距一起压平。
 ;   提速只动这个**基数**，让所有状态按同一比例变快（受伤时依然明显慢于健康）。
 move_interval = 0.5
-component_scripts = Array[Script]([ExtResource("2_mover"), ExtResource("3_pbrain"), ExtResource("4_body"), ExtResource("5_needs"), ExtResource("6_persona"), ExtResource("7_conceal"), ExtResource("13_sprint"), ExtResource("8_aging"), ExtResource("9_lineage"), ExtResource("11_graze"), ExtResource("12_drink")])
+component_scripts = Array[Script]([ExtResource("2_mover"), ExtResource("3_pbrain"), ExtResource("4_body"), ExtResource("5_needs"), ExtResource("6_persona"), ExtResource("14_perc"), ExtResource("7_conceal"), ExtResource("13_sprint"), ExtResource("15_thermal"), ExtResource("16_sleep"), ExtResource("8_aging"), ExtResource("9_lineage"), ExtResource("11_graze"), ExtResource("12_drink")])
 body_parts = Array[BodyPartDef]([ExtResource("p_head"), ExtResource("p_ribcage"), ExtResource("p_arm_l"), ExtResource("p_arm_r"), ExtResource("p_leg_l"), ExtResource("p_leg_r")])
 active_needs = Array[NeedDef]([ExtResource("n_food"), ExtResource("n_water"), ExtResource("n_warmth"), ExtResource("n_fatigue")])

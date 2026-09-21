@@ -123,14 +123,15 @@ func is_lethal() -> bool:
 	return lifespan_min > 0.0 and age_min >= lifespan_min
 
 func lethal_reason() -> String:
-	return "老死（活了 %.1f 天）" % (age_min / 1440.0)
+	return "老死（活了 %.1f 天）" % TimeSystem.minutes_to_days(age_min)
 
 # ---------------- 调试 ----------------
 
 func debug_state() -> String:
 	var names := ["幼", "成", "老"]
 	return "年龄%.1f/%.0f天[%s] 体型%.0f%%" % [
-		age_min / 1440.0, lifespan_min / 1440.0, names[stage()], size_ratio() * 100.0]
+		TimeSystem.minutes_to_days(age_min), TimeSystem.minutes_to_days(lifespan_min),
+		names[stage()], size_ratio() * 100.0]
 
 # ---------------- 内部 ----------------
 

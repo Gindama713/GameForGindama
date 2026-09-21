@@ -37,12 +37,19 @@ const FAMILY_MAX := 3
 ##   但比猪父母的 0.4 年轻 → 距老年线 0.75 还有 ≈2.7 游戏天。
 const SPAWN_AGE_RATIO := 0.3
 
+## 创始父母的起始年龄 = 寿命 × 此比例（成年，落在 `LifeDef.mature_ratio` 0.20 ~ `elder_ratio` 0.75 之间）。
+## 2026-09-21：原先这个 `0.4` 是**内联魔法数**（写在 `_spawn_family()` 里），
+## 而主角的同一概念有具名常量 `SPAWN_AGE_RATIO` —— 两处口径不一致，改一处不知道另一处。
+## ⚠ 更彻底的归宿是 `LifeDef`（它是"物种属性"，不是编排知识），但那是另一次改动，本次只提常量。
+const ADULT_AGE_RATIO := 0.4
+
 ## 主角身上的**组标**（2026-09-20）。通用检视窗靠它避开主角 ——
 ## 主角有自己的档案面板（`ui/player_panel.gd`），不需要再弹一个"观察别人用"的调试窗。
 ## 【为什么用组】"谁在扮演玩家"是编排层知识，不该加 `Creature.is_player` 字段
 ##   （那等于往基类塞业务身份，违反 §2.2「主角严格是一个物种」的纪律）。
 ##   组是 Godot 原生机制，UI 侧 `is_in_group("player")` 一句就问到了，双方都不必认识对方。
-const GROUP_PLAYER := "player"
+## 【2026-09-21】字面量收敛到 `common/groups.gd`（原先三处各写一遍）。
+const GROUP_PLAYER := Groups.PLAYER
 
 ## 场上所有生物的容器节点（场景树里生物的「区」）。
 ## 【绘制顺序】它在 MapRenderer **之后** —— 兄弟节点按顺序绘制、后画的在上层，所以生物画在地表之上。
@@ -190,7 +197,7 @@ func _spawn_player(g_centers: Array, g_reaches: Array, g_majors: Array,
 	var ag := p.get_component(Aging) as Aging
 	if ag != null:
 		Log.ev("生成", "主角 @%s（第 %d 片草原旁）年龄 %.2f/%.2f 天[%s] 体型%.0f%% 速度%.2f" % [
-			spawn, gi, ag.age_min / 1440.0, ag.lifespan_min / 1440.0,
+			spawn, gi, TimeSystem.minutes_to_days(ag.age_min), TimeSystem.minutes_to_days(ag.lifespan_min),
 			["幼", "成", "老"][ag.stage()], ag.size_ratio() * 100.0, p.locomotion_speed()])
 	else:
 		Log.ev("生成", "主角 @%s（第 %d 片草原旁）" % [spawn, gi])
@@ -342,7 +349,7 @@ func _spawn_family(center: Vector2i, grass_major: int, sector: int, sectors: int
 	if mother == null:
 		return
 	var life: LifeDef = father.def.life
-	var adult_age := life.lifespan_min * 0.4 if life != null else 0.0
+	var adult_age := life.lifespan_min * ADULT_AGE_RATIO if life != null else 0.0
 	var fl: Lineage = father.get_component(Lineage) as Lineage
 	var ml: Lineage = mother.get_component(Lineage) as Lineage
 	fl.sex = Lineage.Sex.MALE
@@ -368,14 +375,6 @@ func _spawn_family(center: Vector2i, grass_major: int, sector: int, sectors: int
 		ml.add_child_id(child.id)
 		fl.add_child_id(child.id)
 		# 新生儿 age=0（Aging 默认），不 artificially 设年龄 → 族谱上"多大就是多大"
-
-## 调试工具栏「刷猪」用：全图随机空格生成一只猪（O(1)，GridManager 维护空格集合）
-func spawn_pig_random() -> void:
-	var c := GridManager.random_free_cell()
-	if c.x < 0:
-		print("没有空格可以刷猪了")
-		return
-	_spawn_pig(c)
 
 ## 场上隐蔽中的生物数（自检/调试用）
 func concealed_count() -> int:

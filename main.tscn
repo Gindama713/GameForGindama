@@ -1,4 +1,9 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Script" path="res://world/sleep_director.gd" id="14_sleepdir"]
+
+
+[ext_resource type="Script" path="res://world/grass_layer.gd" id="13_grass"]
 
 [ext_resource type="Script" path="res://main.gd" id="1"]
 [ext_resource type="Script" path="res://world/map_renderer.gd" id="4_map"]
@@ -17,8 +22,14 @@ script = ExtResource("1")
 [node name="MapRenderer" type="Node2D" parent="."]
 script = ExtResource("4_map")
 
+[node name="GrassLayer" type="Node2D" parent="."]
+script = ExtResource("13_grass")
+
 [node name="WaterLayer" type="Node2D" parent="."]
 script = ExtResource("10_water")
+
+[node name="SleepDirector" type="Node" parent="."]
+script = ExtResource("14_sleepdir")
 
 [node name="Creatures" type="Node2D" parent="."]
 

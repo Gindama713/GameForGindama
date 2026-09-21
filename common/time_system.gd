@@ -50,6 +50,14 @@ func _physics_process(delta: float) -> void:
 func day() -> int:
 	return int(elapsed / MINUTES_PER_DAY) + 1
 
+## 游戏分 → 天（1 天 = `MINUTES_PER_DAY` 游戏分）。
+## 【为什么要有它】此前 `1440.0` 被**硬编码在 4 处**（`aging.gd`×2 / `main.gd` / `player_panel.gd`）——
+##   典型的同值复制：`MINUTES_PER_DAY` 改了它们不会跟着变，
+##   而且没人知道还有谁在用这个数（隐式耦合）。
+##   ⇒ 换算只此一处，别处一律调它。
+static func minutes_to_days(minutes: float) -> float:
+	return minutes / float(MINUTES_PER_DAY)
+
 ## 当天已过的游戏分钟（0 .. 1439.x）
 func minute_of_day() -> float:
 	return fmod(elapsed, MINUTES_PER_DAY)

@@ -1,24 +1,35 @@
 class_name MapRenderer
 extends Node2D
 
-## 地图渲染层 —— 把逻辑网格画成 DF 式地图。
+## 地图**地形层** —— 把逻辑网格画成 DF 式地图。
 ## 【纪律】只读不写：terrain 怎么变是逻辑层的事，这里只画。
 ##
-## 表现**不写在本文件**：统一问 Terrain 注册表（一事实来源），规则与生物一致：
+## ── 【2026-09-21 拆层】为什么把"草"从这里拿出去 ──
+##   原先本文件把「地形 + 活草」混在同一个 `_draw()` 里画，于是**每次重绘都要扫全图 16900 格**。
+##   而"草变了"是**高频**事件（实测 **0.36 次/真实秒**）——
+##   每约 2.8 秒就有一次 **~31 ms** 的尖峰（实测：最差帧 **45.1 ms**，
+##   把本层藏起来后同一段只剩 **13.7 ms**）。平均帧率不受影响（5.6 ms / 178 FPS），
+##   但那是**周期性掉帧**，肉眼看得出。
+##
+##   而**地形是静态的** —— 一局里只在 `terrain_changed` 时变（开局一次）。于是拆开：
+##     · **本文件**：只画地形，只订阅 `terrain_changed`
+##     · **`world/grass_layer.gd`**：只画有活草的格，订阅 `grass_changed`，
+##       而且**只遍历草格表**（开局几百格）而不是全图
+##   ⇒ 这才是 `EventBus.grass_changed` 注释里"供表现层**局部**重画"那句话的落地。
+##     （在此之前，信号带了格坐标，唯一的接收方却丢掉坐标做全量重绘 —— 契约与实现不一致。）
+##
+## 【表现规则】统一问 Terrain 注册表（一事实来源）：
 ##   **有贴图就用贴图**（`grass` / `tall_grass` = `world/art/*.png`），没贴图的才用 `color` 色块兜底。
 ##   加一种地形 = 改 Terrain，本文件一行不改。
 ##
-## 130×130 = 16900 格。**静态画布**：地形变化或草场变化（啃食/再生/扩散）时重画。
-## 有活草的格按 GrassField.durability 调制颜色（秃→枯黄、成熟→浓绿）；无活草才回落到地形底图。
-
-## 秃(耐久0)时的色调（枯黄），成熟(满)时用纯白（=贴图原色，浓绿）。按耐久比例线性插值。
-const BARE_TINT := Color(0.62, 0.55, 0.30)
-const GRASS_TEX: Texture2D = preload("res://world/art/grass.png")
+## ⚠ **本层会把"有草的格"也照常画一遍**，随后由草层盖上去。看着像白做，但反过来
+##   （本层跳过有草的格）会让本层依赖 `GrassField`、并且必须在草变化时重绘 ——
+##   那就把刚拆开的两层又焊回去了。而本层**极少重绘**，多画的那点是一次性成本。
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST   # 逐格铺贴图，保持硬像素不糊
+	# 只订阅地形变化。**不再订阅 grass_changed** —— 那是草层的事（见文件头）。
 	EventBus.terrain_changed.connect(queue_redraw)
-	EventBus.grass_changed.connect(func(_c: Vector2i) -> void: queue_redraw())
 
 func _draw() -> void:
 	var g := GridManager.grid
@@ -30,17 +41,7 @@ func _draw() -> void:
 			var cell := g.get_cell(Vector2i(x, y))
 			if cell == null:
 				continue
-			var coord := Vector2i(x, y)
 			var rect := Rect2(Vector2(x, y) * s, Vector2(s, s))
-			var ratio := GrassField.ratio_of(coord)       # <0 = 该格无活草
-			if ratio >= 0.0:
-				# 有活草：贴图仍按该格地形选（高草→high-grass.png、普通草→grass.png），
-				# 只有扩散到无贴图基底(unknown 黑土)上的新草才回退用 grass.png；再按耐久着色。
-				var gtex := Terrain.texture_of(cell.terrain)
-				if gtex == null:
-					gtex = GRASS_TEX
-				draw_texture_rect(gtex, rect, false, BARE_TINT.lerp(Color.WHITE, ratio))
-				continue
 			var tex := Terrain.texture_of(cell.terrain)
 			if tex != null:
 				draw_texture_rect(tex, rect, false)                 # 有图用图

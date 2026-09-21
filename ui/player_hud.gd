@@ -25,8 +25,14 @@ var _player: Creature = null
 var _root: VBoxContainer
 var _total_bar: PixelBar
 var _total_lbl: Label
+## 体力条（2026-09-21）。**不是**一条需求 —— 它归 `Sprint` 组件管，且上限是动态的。
+var _stamina_bar: PixelBar
+var _stamina_lbl: Label
 var _needs_grid: GridContainer
 var _age_lbl: Label
+## 睡眠状态行（2026-09-21）。**必须有** —— 睡着时时间在加速，
+## 不说明白的话玩家只会看到"画面突然变快、角色不动"。
+var _sleep_lbl: Label
 var _dead_lbl: Label
 var _need_rows: Array = []     # {need: Need, bar: PixelBar}
 
@@ -70,6 +76,20 @@ func _build() -> void:
 	_total_lbl = _small("")
 	hp_row.add_child(_total_lbl)
 
+	# —— 体力行（2026-09-21）——
+	# 【为什么单独一行、不塞进下面的需求格】体力**不是一条需求**：它归 `Sprint` 组件管，
+	#   而且**上限是动态的**（= 疲劳值）。塞进 `_needs_grid` 会让人以为它和饥饿/口渴是同一类东西，
+	#   也会让"上限在缩"这件事看不出来。这里显示成 `当前/上限` 两个数，缩了就直接看得见。
+	var st_row := HBoxContainer.new()
+	st_row.add_theme_constant_override("separation", 8)
+	_root.add_child(st_row)
+	st_row.add_child(_small("体力"))
+	_stamina_bar = PixelBar.new()
+	_stamina_bar.segments = BAR_SEGMENTS
+	st_row.add_child(_stamina_bar)
+	_stamina_lbl = _small("")
+	st_row.add_child(_stamina_lbl)
+
 	# —— 需求行（4 列 × 1 行）——
 	_needs_grid = GridContainer.new()
 	_needs_grid.name = "HudNeedsGrid"
@@ -77,6 +97,11 @@ func _build() -> void:
 	_needs_grid.add_theme_constant_override("h_separation", 8)
 	_needs_grid.add_theme_constant_override("v_separation", 3)
 	_root.add_child(_needs_grid)
+
+	# —— 睡眠状态（默认隐藏，只在非清醒时出现）——
+	_sleep_lbl = _small("")
+	_sleep_lbl.visible = false
+	_root.add_child(_sleep_lbl)
 
 	# —— 年龄 / 阶段 / 性别 ——
 	_age_lbl = _small("")
@@ -174,10 +199,28 @@ func _refresh() -> void:
 		_total_bar.set_ratio(r)
 		_total_lbl.text = "%d/%d" % [int(hp), int(mx)]
 
+	# 体力：比例是**相对当前上限**的（所以"满"不代表能跑很久 —— 上限可能已经缩了），
+	# 数字显示 `当前/上限`，缩了直接看得见。
+	var sp := _player.get_component(Sprint) as Sprint
+	if sp != null and _stamina_bar != null:
+		_stamina_bar.set_ratio(sp.stamina_ratio())
+		_stamina_lbl.text = "%d/%d" % [int(sp.stamina()), int(sp.stamina_max())]
+
 	# 需求
 	for row in _need_rows:
 		var n: Need = row["need"]
 		(row["bar"] as PixelBar).set_ratio(n.ratio())
+
+	# 睡眠状态。清醒时整行隐藏（不占位、不打扰）。
+	var sl := _player.get_component(Sleep) as Sleep
+	if sl != null and _sleep_lbl != null:
+		if sl.state() == Sleep.State.AWAKE:
+			_sleep_lbl.visible = false
+		else:
+			_sleep_lbl.visible = true
+			var spd := int(round(TimeSystem.speed))
+			var tail := "　时间 ×%d" % spd if spd > 1 else ""
+			_sleep_lbl.text = "%s%s" % [sl.state_text(), tail]
 
 	# 阶段 / 性别（**不再重复"第 N 天"** —— 屏幕顶部时钟已在显示，问题4 的同一诉求）。
 	var ag := _player.get_component(Aging) as Aging

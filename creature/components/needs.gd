@@ -23,13 +23,13 @@ func setup(host: Node) -> void:
 			needs.append(Need.new(ndef))
 
 func tick(dt: float) -> void:
+	# 劳累档位（协议 8）：静止 1× / 走路 2× / 跑步 4×。**只作用在疲劳上** ——
+	# 跑起来不会更饿更渴（那是另一套规则，将来真要加就再加一条协议，别塞进这里）。
+	var exert: float = creature.exertion_level()
 	for n in needs:
 		if n.value > 0.0:
-			n.value = maxf(n.value - n.def.drain_rate * dt, 0.0)
-			if n.is_depleted() and not n._depleted_logged:
-				n._depleted_logged = true
-				var tail := "（致命）" if n.def.depleted_is_lethal else ""
-				Log.ev("需求", "%s %s 见底%s" % [creature.tag(), n.def.label, tail])
+			var mult := exert if n.def.id == FATIGUE_ID else 1.0
+			drain(n.def.id, n.def.drain_rate * mult * dt)
 
 # ---------------- 协议实现 ----------------
 
@@ -65,6 +65,43 @@ func debug_state() -> String:
 	return "需求{%s}" % " ".join(nstr)
 
 # ---------------- 查询 / 操作 ----------------
+
+## 扣减某项需求的**唯一入口**（与 `restore()` 对称）。返回 true = 本次调用让它**刚刚见底**。
+##
+## ── 【为什么必须收口】──
+##   "扣需求"原本散在三处，各有各的速率（都是合理的），但都要做同一件事：
+##   **"扣到 0 为止 + 见底只报一次日志"**：
+##     · 本组件按 `drain_rate` 扣（活着的基本消耗）
+##     · `Sprint` 按自己的 `DRAIN_PER_SEC` 扣（冲刺）
+##     · `Thermal` 按自己的 `NIGHT_DRAIN_PER_SEC` 扣（夜里受冻）
+##   而去重标记 `Need._depleted_logged` 是**私有字段** —— 于是后两个组件直接读写它，
+##   这就是"跨组件侵入私有状态"。后果有三：
+##     ① **没有一处知道"一条需求可以被哪些途径扣掉"**；
+##     ② 加第四种扣减（中毒 / 流血 / 暴晒）时会再抄一遍那 3 行；
+##     ③ 抄的时候极易漏掉日志口径 —— **历史上真的漏过**
+##        （"疲劳见底"有日志、而"跑空"没日志，排查时完全看不出为什么忽然跑不动）。
+##   ⇒ 收进本函数：扣减 + 封底 + 见底日志。调用方只给"扣多少"，不再碰任何私有字段。
+##
+## `reason` 会并进日志，用来区分"活着消耗"与"冲刺 / 受冻"这类额外扣减：
+##   例如「见底（致命，冻僵了）」「见底（跑空了）」。留空则只报致命性。
+func drain(id: String, amount: float, reason: String = "") -> bool:
+	if amount <= 0.0:
+		return false
+	var n := need_by_id(id)
+	if n == null:
+		return false
+	n.value = maxf(n.value - amount, 0.0)
+	if not n.is_depleted() or n._depleted_logged:
+		return false
+	n._depleted_logged = true
+	var notes: Array[String] = []
+	if n.def.depleted_is_lethal:
+		notes.append("致命")
+	if not reason.is_empty():
+		notes.append(reason)
+	var tail := "" if notes.is_empty() else "（%s）" % "，".join(notes)
+	Log.ev("需求", "%s %s 见底%s" % [creature.tag(), n.def.label, tail])
+	return true
 
 ## 恢复某项需求（将来的「吃 / 喝 / 取暖 / 睡觉」都调这个）。
 ## 返回 false = 该需求没激活（如给鱼喂水）。

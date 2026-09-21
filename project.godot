@@ -90,6 +90,16 @@ sprint={
 ]
 }
 
+; —— 睡眠（2026-09-21）——
+; 【用户拍板】"玩家想睡觉的时候就开始睡觉，然后睡到自然醒或者检测到什么在附近"。
+; 按一下 = 躺下入睡；再按一下 = 主动叫醒自己（切换式，不是按住）。
+; ⚠ 与 sprint 同样用 physical_keycode（82 = KEY_R），与键盘布局无关。
+sleep={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":82,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

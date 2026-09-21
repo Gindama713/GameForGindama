@@ -388,6 +388,34 @@ func current_speed() -> float:
 	fast = clampf(fast, 1.0, SPRINT_SPEED_MAX)   # 协议 6b：增益，钳 1..上限
 	return clampf(slow * fast, 0.0, SPRINT_SPEED_MAX)
 
+## 宿主当前处于**哪一档劳累**（协议 8）：1.0 静止 / 2.0 走路 / 4.0 跑步。
+##
+## 与 `is_concealed()` / `locomotion_speed()` 同构：**基类只做聚合，不认识任何具体组件**。
+## 于是「走路变累、跑步更累」各自在自己的组件里实现 `exertion_level()`，
+## 将来加「负重走路更累 / 爬坡」也不必回来改这里。
+##
+## ⚠ **聚合用 max，不是相乘**（与协议 5/6 不同）：跑步时必然也在走路，
+##   两者同时为真 —— 相乘会得到 8 倍。语义是"处于哪一档"，取最大才对。
+##   （与 `_aggregate_tint()` 的"取最严重"同一种思路。）
+func exertion_level() -> float:
+	var m := 1.0
+	for comp in _components.values():
+		m = maxf(m, comp.exertion_level())
+	return m
+
+## 宿主当前的**感知倍率**（协议 9）：1.0 = 正常，越小看得越近（睡着时 0.35）。
+##
+## 与 `locomotion_speed()` 同构：基类只做**乘积聚合**并钳在 `0..1`，
+## 因为本协议的语义是**减益**（看不清了），1.0 就是天花板。
+## 于是"睡着 / 致盲 / 中毒眼花"各自在自己的组件里实现，基类不认识它们。
+##
+## ⚠ 只有 `Perception` 的"发现别人"类查询消费它；"物理挨着谁"不消费（见协议 9 的注释）。
+func sense_multiplier() -> float:
+	var m := 1.0
+	for comp in _components.values():
+		m *= comp.sense_multiplier()
+	return clampf(m, 0.0, 1.0)
+
 ## 成长是连续的：每 tick 轻量刷新一次精灵缩放（只在有图时；一次乘法+赋值，很便宜）。
 ## **顺带刷新伤势染色** —— 伤是随时可能挨的（不必等移动才更新外观），
 ## 两个都是"每 tick 一次赋值"级别的开销，合在一起省一次遍历。

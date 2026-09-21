@@ -1,5 +1,22 @@
 [gd_resource type="Resource" script_class="NeedDef" load_steps=2 format=3]
 
+; ⚠ drain_rate = 0.0 是**故意的**，不是漏配（2026-09-21）。
+;
+; 「保暖」不再走 Needs 的通用匀速衰减 —— 它的涨落是**昼夜 + 抱团**决定的：
+;   白天（不下雨）= 回暖到满；夜里逐渐变冷；周围同伴越多掉得越慢。
+; 这套逻辑在 `creature/components/thermal.gd`（Thermal 组件）里，
+; 它按 NIGHT_DRAIN_PER_SEC 这个**绝对速率**直接写 value。
+;
+; 【为什么必须归零】`Needs.tick()` 对每条需求都会扣一次 `drain_rate * dt`。
+;   这里若还留着 0.01389，Thermal 扣一遍、Needs 又扣一遍 —— **两把尺子量同一件事**，
+;   实际速率变成 0.1 + 0.01389，且改任何一边都会让另一边悄悄漂移。
+;   这与 Sprint 的 DRAIN_PER_SEC 注释里记的是同一条教训。
+;
+; 【旧值 0.01389 的历史】= 100/0.01389 = 7199 游戏分 = 5.00 游戏日恒定衰减。
+;   那个值的问题不是大小，而是**它比寿命(6 日)短、且全项目没有任何地方补保暖** ——
+;   于是每只生物都会在 5.00 日「冻死」，`Aging` 的老死永远轮不到执行。
+;   改成昼夜制后：独猪一夜掉 60（剩 40，不死），白天回满 → 稳态在 40↔100 震荡，不会冻死。
+
 [ext_resource type="Script" path="res://creature/need_def.gd" id="1"]
 
 [resource]
@@ -7,5 +24,5 @@ script = ExtResource("1")
 id = "warmth"
 label = "保暖"
 max_value = 100.0
-drain_rate = 0.01389
+drain_rate = 0.0
 depleted_is_lethal = true

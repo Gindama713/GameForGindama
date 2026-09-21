@@ -55,11 +55,14 @@ func set_target(t: Node2D) -> void:
 func is_following() -> bool:
 	return target != null and is_instance_valid(target)
 
-## 地图在世界里的像素尺寸（100×100 × 32 = 3200×3200）。
+## 地图在世界里的像素尺寸（130×130 × 32 = 4160×4160）。
 func _world_size() -> Vector2:
-	if GridManager == null or GridManager.grid == null:
-		return Vector2(1280.0, 768.0)
-	return Vector2(GridManager.grid.width, GridManager.grid.height) * float(Grid.CELL_SIZE)
+	if GridManager != null and GridManager.grid != null:
+		return Vector2(GridManager.grid.width, GridManager.grid.height) * float(Grid.CELL_SIZE)
+	# 兜底（只在"网格还没就绪"的那几帧走到）：用**当前视口尺寸**，不写死 1280×768 ——
+	# 写死的话改了 `project.godot` 的分辨率这里就对不上，而且是个没人会回来改的数。
+	var vp := get_viewport()
+	return vp.get_visible_rect().size if vp != null else Vector2.ONE
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -90,15 +93,15 @@ func _process(delta: float) -> void:
 		_clamp_position()      # 跟随也要夹在地图内，别跟出图外
 		return
 	# —— 自由镜头：原来的手动 WASD / 方向键平移 ——
-	var dir := Vector2.ZERO
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		dir.y -= 1.0
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		dir.y += 1.0
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		dir.x -= 1.0
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		dir.x += 1.0
+	# ⚠ **走 InputMap 的 action，不硬编码 KEY_W/A/S/D**（2026-09-21 改）。
+	#   理由："哪个键往哪走"这件事只应有一处事实来源（`project.godot` 的 InputMap）。
+	#   原先这里写 `Input.is_key_pressed(KEY_W)` 等 8 个物理键 ——
+	#     · 与 InputMap 里的 move_* **同值复制**：改键位时必然漏改这一处；
+	#     · 而 InputMap 存在的全部意义就是"可重绑定"，绕过它 = 玩家改键后相机不听；
+	#     · 最坏情况是玩家改了键，相机和玩家各吃不同的键，行为变得难以预测。
+	#   项目已有 move_up / move_down / move_left / move_right（与主角移动共用同一套绑定），
+	#   且用的是 `physical_keycode`（与键盘布局无关）—— 换成 action 后键位完全不变。
+	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if dir == Vector2.ZERO:
 		return
 	position += dir.normalized() * PAN_SPEED * delta / zoom.x

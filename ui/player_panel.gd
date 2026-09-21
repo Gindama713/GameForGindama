@@ -736,7 +736,7 @@ func _refresh() -> void:
 	if lin != null:
 		bits.append("性别 %s" % lin.sex_text())
 	if ag != null:
-		bits.append("第 %.1f 天" % (ag.age_min / 1440.0))
+		bits.append("第 %.1f 天" % TimeSystem.minutes_to_days(ag.age_min))
 		bits.append("「%s」" % ["幼年", "成年", "老年"][ag.stage()])
 	_info_lbl.text = " · ".join(bits)
 

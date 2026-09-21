@@ -33,6 +33,13 @@ const MIN_SPEED := 0.15
 ## 疾跑输入动作名（`project.godot`）
 const ACTION_SPRINT := "sprint"
 
+## 睡眠输入动作名（`project.godot`，KEY_R）。
+## 【为什么用**自己做的边沿检测**而不是 `Input.is_action_just_pressed()`】
+##   本组件的 `tick()` 挂在 `TimeSystem.tick` 上（= `_physics_process`），
+##   而"刚刚按下"这种边沿量在"渲染帧率 ≠ 物理帧率"时容易漏掉或重复触发。
+##   自己记住上一帧的按键状态最稳，而且与下面 `_prev` 的方向边沿检测是同一套写法。
+const ACTION_SLEEP := "sleep"
+
 ## 4 向映射用的方向名（调试自述）
 const DIR_NAMES := {
 	Vector2i.UP: "上", Vector2i.DOWN: "下", Vector2i.LEFT: "左", Vector2i.RIGHT: "右",
@@ -40,6 +47,7 @@ const DIR_NAMES := {
 
 var _step_acc: float = 0.0          # 距上一次迈步攒了多久（游戏分钟）
 var _prev: Vector2i = Vector2i.ZERO  # 上一次读到的输入方向（HOLD_MOVE=false 时的边沿检测用）
+var _sleep_key_prev := false         # 上一帧睡眠键是否按下（自己做的边沿检测，见 ACTION_SLEEP）
 var _intent := PlayerIntent.new()    # 意图 + 干扰层挂点（v1 直通）
 
 func requires() -> Array:
@@ -49,17 +57,41 @@ func setup(host: Node) -> void:
 	super.setup(host)
 	_step_acc = 0.0
 	_prev = Vector2i.ZERO
+	_sleep_key_prev = false
 
 func tick(dt: float) -> void:
 	# 不判断生死 —— 死了就不会被 tick（Creature.die() 已把宿主摘出时钟）
+
+	# —— 睡眠开关（2026-09-21）：按一下躺下，再按一下叫醒自己 ——
+	# 【为什么是"切换"而不是"按住"】睡一夜在加速下是十几秒，按住 R 十几秒很难受；
+	#   而且"想醒就醒"本来就是一个独立动作，不是"松手"。
+	var sl := creature.get_component(Sleep) as Sleep
+	var key_down := Input.is_action_pressed(ACTION_SLEEP)
+	if key_down and not _sleep_key_prev and sl != null:
+		if sl.is_sleeping():
+			sl.wake_up("自己按醒了")
+		else:
+			sl.start()
+	_sleep_key_prev = key_down
+
+	# **睡着时不行动**：不读方向、不举疾跑意图（躺着不可能在跑）。
+	# ⚠ 这一条必须挡在"举疾跑意图"之前 —— 否则睡着的角色仍在举意图，会白扣体力。
+	if sl != null and not sl.can_act():
+		_prev = Vector2i.ZERO
+		_step_acc = 0.0
+		var sp_asleep := creature.get_component(Sprint) as Sprint
+		if sp_asleep != null:
+			sp_asleep.request(false)
+		return
+
 	#
-	# 【疾跑意图要先举，且**不论有没有按方向**】`Sprint.request()` 只是"举这一帧的意图"，
-	#   结算在 `Sprint.tick()` 里。所以即使原地站着，也要把"没在跑"如实举出来
-	#   （否则松手后意图位残留，会一直跑下去）。
+	# 【疾跑意图每帧都举，但只在"真的在走"时才举 true】`Sprint.request()` 只是"举这一帧的意图"，
+	#   结算在 `Sprint.tick()`。每帧都调用（含 dir==零时举 false）是为了清掉松手后的残留意图；
+	#   但**站原地按住 Shift 不该算跑步**——否则原地空转烧体力、甚至跑空。故举意条件 = 有方向 且 按住 Shift。
+	var dir := read_dir()
 	var sprint := creature.get_component(Sprint) as Sprint
 	if sprint != null:
-		sprint.request(Input.is_action_pressed(ACTION_SPRINT))
-	var dir := read_dir()
+		sprint.request(dir != Vector2i.ZERO and Input.is_action_pressed(ACTION_SPRINT))
 	if dir == Vector2i.ZERO:
 		_prev = dir
 		return

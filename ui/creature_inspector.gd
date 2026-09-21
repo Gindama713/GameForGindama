@@ -24,7 +24,8 @@ const CELL_FONT_SIZE := 11     # 格子内容用原生尺寸：信息密集区�
 ## 这是"UI 与编排层之间唯一的约定"：约定的是**一个字符串**，不是 `main.player` 这个引用，
 ## 所以 UI 不认识 Main，Main 也不认识 UI（谁都不持有对方）。
 ## ⚠ 改这里就要改 main.gd 的同名常量（两处，是刻意的"显式契约"而非隐含耦合）。
-const GROUP_PLAYER := "player"
+## 【2026-09-21】字面量收敛到 `common/groups.gd`（原先三处各写一遍）。
+const GROUP_PLAYER := Groups.PLAYER
 
 ## 大脑驱动名 → 中文（状态行显示）
 const DRIVE_LABEL := {

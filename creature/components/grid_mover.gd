@@ -10,6 +10,36 @@ extends CreatureComponent
 
 const DIRS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
 
+## 走路时疲劳消耗的倍率（协议 8）。见 `WALK_GLOW`。
+const WALK_MULT := 2.0
+
+## 「刚迈过步」的余辉时长（游戏分）。
+##
+## 【为什么需要余辉，而不是"这一帧走了没"】生物一次决策走 1 格、间隔约 1 秒
+##   （`move_interval / current_speed`），而 tick 是每 1/60 秒一次 ——
+##   若按"这一帧有没有迈步"判定，60 帧里只有 1 帧算走路，平均倍率会变成 `(1×2+59×1)/60 ≈ 1.017`，
+##   **等于没加**。用一个 2 秒的余辉把迈步之间的空隙盖住，"走路"才是连续的 2 倍。
+## 【为什么是 2 秒】玩家步频 0.5 秒/格、猪约 1~1.5 秒/格 —— 2 秒足够覆盖两者，
+##   又能在"停下"之后很快（2 秒内）回到静止档。
+const WALK_GLOW := 2.0
+
+var _walk_glow := 0.0
+
+## 每帧衰减"刚迈过步"的余辉。见 `WALK_GLOW`。
+func tick(dt: float) -> void:
+	_walk_glow = maxf(_walk_glow - dt, 0.0)
+
+## 协议 8：走路时疲劳消耗 ×2；静止时 1×（跑步那一档由 `Sprint` 给 4×，两者取 max）。
+func exertion_level() -> float:
+	return WALK_MULT if _walk_glow > 0.0 else 1.0
+
+## 最近 `window` 游戏分内**迈过步**吗。`Sleep` 用它判"附近有没有东西在动"。
+## 【为什么做成参数而不是直接用 `_walk_glow`】`WALK_GLOW` 是为"疲劳档位"调的，
+##   而"算不算在动"的窗口是**另一个语义**（睡眠唤醒用 2 分钟）—— 两者将来可能分道扬镳，
+##   所以把窗口交给调用方，本组件只提供事实。
+func moved_recently(window: float) -> bool:
+	return _walk_glow > 0.0 and window > 0.0
+
 ## 某格能否进入：在界内 + 没被别的生物/东西占（自己除外）。
 ## **尸体不算占格**（corpse 不在 content 里）—— 活体"能"走进尸体格。
 func is_cell_free(c: Vector2i) -> bool:
@@ -45,7 +75,12 @@ func free_directions() -> Array[Vector2i]:
 func try_step(offset: Vector2i) -> bool:
 	if not can_move():
 		return false
-	return creature.move_to(creature.coord + offset)
+	# ⚠ 显式标类型：`creature` 在组件基类里是 `Node`，`move_to()` 的返回值是 Variant，
+	#   用 `:=` 会 Parse Error（事实文档 §2.4 坑 7，本项目已复发多次）。
+	var ok: bool = creature.move_to(creature.coord + offset)
+	if ok:
+		_walk_glow = WALK_GLOW      # 点亮"走路"档（协议 8），见 WALK_GLOW
+	return ok
 
 ## 行动前置：问所有组件「允不允许移动」，全票通过才放行。
 ## 不再判断 alive —— 死掉的生物已被 die() 摘出时钟，移动组件根本不会被调到。

@@ -8,6 +8,11 @@ extends CreatureComponent
 ## 【限流防爆炸】冷却 + 营养门槛 + 种群软上限（Main 侧再查一次）三重闸。
 ## 【先判便宜条件再搜索】性别/年龄/冷却/营养都不满足时直接 return，不做邻域搜索（省性能）。
 
+## 营养门槛查哪两项需求。**与 `Grazing.FOOD_ID` / `Drinking.THIRST_ID` 同字面量** ——
+## 原先这里直接写裸字符串 `need_by_id("food")`，是全项目唯一没定义常量的一处（不一致，已补齐）。
+const FOOD_ID := "food"
+const WATER_ID := "water"
+
 var _cooldown: float = 0.0
 
 func requires() -> Array:
@@ -70,8 +75,8 @@ func _nutrition_ok_for(c: Creature) -> bool:
 	var needs := c.get_component(Needs) as Needs
 	if needs == null:
 		return true
-	var f := needs.need_by_id("food")
-	var w := needs.need_by_id("water")
+	var f := needs.need_by_id(FOOD_ID)
+	var w := needs.need_by_id(WATER_ID)
 	if f != null and f.ratio() < life.breed_food_min:
 		return false
 	if w != null and w.ratio() < life.breed_water_min:

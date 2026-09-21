@@ -17,6 +17,8 @@ extends CreatureComponent
 ##   Drink    饮水   权重 = 口渴度换算（`Drinking.thirst_weight()`，渴到危险再 ×1.6）；
 ##                    选中 → 已在水边就**站住**（`Drinking` 自会连续补水），否则朝最近**岸格**走一步
 ##   Cling    跟妈   幼崽且母亲活着、离得 ≥2 格时 3.0；选中 → 朝妈走
+##   Flee     逃命   看见玩家（`Perception.threats()`）时 12.0；选中 → 背离威胁走 + 请求疾跑
+##   Huddle   抱团   夜里越冷、身边越空时越重；选中 → 朝同类重心挪一步（挤在一起取暖，见 `Thermal`）
 ##
 ## 时长也不固定：移动类带抖动、发呆是短歇、休息是**一段有上限的睡眠**（会醒，不是永久静止）。
 ##
@@ -85,6 +87,38 @@ const FLEE_EXHAUSTED_DAMP := 0.6
 ## 实际取 `max(决策间隔, 本值)` —— 决策间隔本身就够长时以它为准，
 ##   避免出现"门闩比决策还短 -> 中间有帧没举意 -> 跑一格停一格"。
 const FLEE_SPRINT_HOLD := 0.5
+
+## —— 抱团取暖（huddle，2026-09-21 加）——
+## 【为什么需要它】用户的机制是「夜里变冷 → 猪**倾向抱团** → 挤在一起掉得慢」。
+##   "掉得慢"由 `Thermal` 负责（按邻近数减免流失），但**"倾向抱团"必须有人推动** ——
+##   光有减免是不够的：夜里 `rest` 权重 ≈3.4 会让猪**就地睡下**，
+##   它们不会主动挪到一起，于是"抱团"永远只发生在**碰巧**挨着的那几对身上。
+##
+## 【取值 5.0 —— 实测调出来的，不是估的】（4 只猪 / 空地 / 整夜 600 分 / 种子 20260918）
+##
+##   | HUDDLE_GAIN | 平均邻近 | 天亮保暖 | 休息时间占比 |
+##   |---|---|---|---|
+##   | 0（对照，等于没有本驱动） | 1.29 | 57.6 | 93% |
+##   | 3.5 | 1.81 | 64.5 | 93% |
+##   | 5.0 | **2.07** | **67.9** | 94% |
+##   | 10.0 | 1.92 | 65.9 | 93% |
+##
+##   （独猪基准：0 只邻近、天亮保暖 40）
+##   ⇒ 取 5.0：明显优于 3.5，而 10.0 已经没有更多收益（在 1.8~2.1 之间震荡，是噪声）。
+##
+##   ⚠ **我一开始写在这里的警告是错的，实测推翻了它**。原文写的是
+##     "权重取太大（>6）会让猪整夜躁动、不再睡 -> 疲劳回不上来"。
+##     实测到 20.0 为止，**休息时间占比始终是 93~94%**，与权重完全无关。
+##     原因：本驱动"走不动就地休息"（见下面 match 分支）—— 猪挪到同伴身边就睡下，
+##     所以它**结构上不可能**挤掉睡眠。教训：这类"权重会不会压垮另一个驱动"的担忧，
+##     要先看那个驱动是**按时间买断**的（`rest` 一次买 60~150 分）还是**按次**的 ——
+##     买断型的极难被挤掉，估权重之前该先算这笔账，而不是先写一条警告。
+##
+##   ⚠ 真正需要担心的不是睡眠，而是**机会太少**：夜里 94% 的时间在睡，
+##     醒着的窗口很碎，一次决策只走 1 格 -> 光加权重最多推到 1.9 就上不去了。
+##     所以本驱动与 feed/drink 一样接了 `TRAVEL_STICKY`（见那里的注释）——
+##     粘性才是把它从 1.29 推到 2.07 的主因，权重只是次要项。
+const HUDDLE_GAIN := 5.0
 
 ## 休息时长（游戏分钟）：白天是「短歇」、夜里是「长睡」（用户 2026-09-19 拍板「拉开昼夜反差」）
 const REST_DAY_MIN := 1.5
@@ -167,9 +201,12 @@ func _decide_and_act() -> void:
 	var separate_w := 0.0
 	var social_dir := Vector2.ZERO
 	var separate_dir := Vector2.ZERO
+	## 同物种邻居（社交 / 抱团共用）。**一帧只扫一次** ——
+	## `perc.neighbors()` 要扫 (2×6+1)²=169 格，加抱团驱动时若再调一遍就是白扫两次。
+	var ns: Array = []
 	var perc := creature.get_component(Perception) as Perception
 	if perc != null:
-		var ns := perc.neighbors()
+		ns = perc.neighbors()
 		if not ns.is_empty():
 			social_w = sociability * SOCIAL_WEIGHT
 			separate_w = (1.0 - sociability) * SEPARATE_WEIGHT
@@ -232,6 +269,20 @@ func _decide_and_act() -> void:
 	if flee_w > 0.0 and sprint != null and sprint.is_exhausted():
 		flee_w *= FLEE_EXHAUSTED_DAMP
 
+	# 抱团取暖（huddle，2026-09-21）—— 见 HUDDLE_GAIN 的注释。
+	# 【意愿与目标分开取，这不是重复】"想不想挤"问 `Thermal`（它知道昼夜、冷暖、身边有几具身体），
+	#   "往哪挤"用同物种邻居 `ns`（想挨的是同类，不是随便一只什么生物）。
+	#   两件事的来源不同：`Thermal` 的邻近数是**不分物种**的物理取暖（挨着谁都能暖），
+	#   而**去挤谁**是行为选择 —— 猪会挤猪，不会专程去挤一只兔子。
+	var huddle_w := 0.0
+	var huddle_dir := Vector2.ZERO
+	var thermal := creature.get_component(Thermal) as Thermal
+	if thermal != null and not ns.is_empty():
+		var urge := thermal.huddle_urge()
+		if urge > 0.0:
+			huddle_w = urge * HUDDLE_GAIN
+			huddle_dir = _dir_to_centroid(ns)
+
 	# --- 旅行粘性：把"正在赶路的目标"抬起来（详见 TRAVEL_STICKY 的注释）---
 	if _sticky_left > 0:
 		if _sticky_drive == "feed":
@@ -244,12 +295,36 @@ func _decide_and_act() -> void:
 				drink_w *= TRAVEL_STICKY
 			else:
 				_sticky_left = 0          # 已喝足 -> 同上
+		elif _sticky_drive == "huddle":
+			# 【抱团也要粘性，理由与 feed/drink 同源，但病因不同】
+			#   feed/drink 的病是"两个等重目标互相拉锯"；
+			#   抱团的病是"**一次决策只走 1 格，而一次休息买 60~150 分**" ——
+			#   夜里约 85% 的时间在睡，醒着的窗口很碎，猪挪一步就又睡下，
+			#   于是"往同伴那边走"永远走不出两三格。
+			#   实测（4 只猪、空地、整夜）：权重从 3.5 一路加到 20，
+			#   平均邻近数都卡在 1.5~1.9 上不去 —— 说明瓶颈不在权重，而在**机会太少**。
+			#   给粘性后，一旦决定去抱就连着走几步，把距离真正走掉。
+			if huddle_w > 0.0:
+				huddle_w *= TRAVEL_STICKY
+			else:
+				_sticky_left = 0          # 已经抱到了 -> 目标消失，粘性立刻失效
 
 	# --- 加权随机（轮盘）选一个驱动 ---
-	var drives: Array[String] = ["wander", "social", "separate", "rest", "idle", "feed", "cling", "drink", "flee"]
-	var weights: Array[float] = [wander_w, social_w, separate_w, rest_w, idle_w, feed_w, cling_w, drink_w, flee_w]
-	var chosen := _roulette(drives, weights)
-	_update_sticky(chosen, feed_w, drink_w)
+	# 【为什么写成"id 与权重**成对**"而不是两个平行数组】（2026-09-21 改）
+	#   两个平行数组靠**下标对齐**，顺序错一位**不会报任何错** ——
+	#   只会把 A 驱动的权重喂给 B 驱动，是典型的**静默失败**
+	#   （正是 `DefValidator` 想消灭的那一类：数据错了却没人喊）。
+	#   写成对之后，`id` 和它的权重在结构上**不可能错位**。
+	#   ⚠ 加第 11 个驱动仍然要改 `match chosen` 的分支（那是行为、不是数据，收不进来），
+	#     但"权重配错对象"这一种错法从此不存在了。
+	#   ⚠ 顺序不影响正确性（轮盘是加权随机），但**保持与 `match` 分支同样的书写顺序**便于对照。
+	var drive_table: Array = [
+		["wander", wander_w], ["social", social_w], ["separate", separate_w],
+		["rest", rest_w], ["idle", idle_w], ["feed", feed_w],
+		["cling", cling_w], ["drink", drink_w], ["flee", flee_w], ["huddle", huddle_w],
+	]
+	var chosen := _roulette(drive_table)
+	_update_sticky(chosen, feed_w, drink_w, huddle_w)
 	match chosen:
 		"flee":
 			# 逃命：朝背离威胁的方向跑一格。
@@ -265,6 +340,23 @@ func _decide_and_act() -> void:
 		"cling":
 			_step_toward(mover, dirs, cling_dir)   # 朝妈走一步（走不动/已在身边=站着陪妈）
 			last_drive = "cling"
+		"huddle":
+			# 朝同类重心挪一步（挤到一起取暖）。
+			#
+			# ⚠ **走不动时绝不退化游荡**（这里与 social/separate/feed 的处理**故意不同**）。
+			#   实测踩过：`_step_toward` 失败有两种情形 ——
+			#     ① 重心方向为零（已经挤在中间了）
+			#     ② 目标格被同伴占着（已经挨着同伴了）
+			#   这两种都是"**已经抱到了**"的正面信号，退化游荡会把刚聚起来的一群**又拆散**，
+			#   于是"抱团"永远聚不起来（实测：4 只猪在空地过一夜，平均只挨着 1.1 只，
+			#   而理论值应该是 3 只）。
+			#   ⇒ 正确反应是**就地歇下**（`last_drive = "rest"`）：想抱、已经抱到了、那就睡。
+			#     这同时也让"抱团"与"睡觉"自然接续 —— 猪挪到同伴身边就趴下，
+			#     而不是到了旁边再随机走开。
+			if _step_toward(mover, dirs, huddle_dir):
+				last_drive = "huddle"
+				return
+			last_drive = "rest"
 		"feed":
 			# 站住开吃**问 Grazing**（口径必须唯一）。原版这里自己判 `is_edible`、而 Grazing 只啃 `is_tender`
 			# → 猪站在满耐久草格上"站住了但啃不动"，永久卡死（实测踩过）。现在只认它一个判断：
@@ -308,8 +400,8 @@ func _wander_step(mover: GridMover, dirs: Array[Vector2i]) -> void:
 	last_drive = "wander"
 
 ## 记录"这次选的目标驱动"，让下一次决策继续偏向它（粘性）。详见 TRAVEL_STICKY 的注释。
-## 只在目标**还没满足**（权重 > 0）时才续期 —— 吃饱/喝足会自动放手，不需要额外复位。
-func _update_sticky(chosen: String, feed_w: float, drink_w: float) -> void:
+## 只在目标**还没满足**（权重 > 0）时才续期 —— 吃饱/喝足/已抱到会自动放手，不需要额外复位。
+func _update_sticky(chosen: String, feed_w: float, drink_w: float, huddle_w: float) -> void:
 	_sticky_left = maxi(_sticky_left - 1, 0)
 	if chosen == "feed" and feed_w > 0.0:
 		_sticky_drive = "feed"
@@ -317,29 +409,33 @@ func _update_sticky(chosen: String, feed_w: float, drink_w: float) -> void:
 	elif chosen == "drink" and drink_w > 0.0:
 		_sticky_drive = "drink"
 		_sticky_left = TRAVEL_STICKY_STEPS
+	elif chosen == "huddle" and huddle_w > 0.0:
+		_sticky_drive = "huddle"
+		_sticky_left = TRAVEL_STICKY_STEPS
 
 func _rand_dir() -> Vector2:
 	var d: Vector2i = GridMover.DIRS[creature.rng.randi_range(0, GridMover.DIRS.size() - 1)]
 	return Vector2(d)
 
 ## 加权随机选一项（轮盘）。权重 ≤0 的项不会被选中。
-func _roulette(drives: Array, weights: Array) -> String:
+## `table` 的每一项是 `[id: String, weight: float]` —— **成对**传入，理由见调用点的注释。
+func _roulette(table: Array) -> String:
 	var total := 0.0
-	for w in weights:
-		if float(w) > 0.0:
-			total += float(w)
+	for item in table:
+		if float(item[1]) > 0.0:
+			total += float(item[1])
 	if total <= 0.0:
-		return String(drives[0])
+		return String(table[0][0])          # 全为 0 -> 退回第一项（与旧行为一致）
 	var r: float = creature.rng.randf() * total
 	var acc := 0.0
-	for i in drives.size():
-		var w := float(weights[i])
+	for item in table:
+		var w := float(item[1])
 		if w <= 0.0:
 			continue
 		acc += w
 		if r < acc:
-			return String(drives[i])
-	return String(drives[drives.size() - 1])
+			return String(item[0])
+	return String(table[table.size() - 1][0])
 
 ## 朝 desired 方向走一格；desired 为零向量时返回 false。
 func _step_toward(mover: GridMover, dirs: Array[Vector2i], desired: Vector2) -> bool:
