@@ -60,6 +60,21 @@ extends CreatureComponent
 ## 睡眠状态。见文件头第二节。
 enum State { AWAKE, ONSET, ASLEEP, WAKING }
 
+## 唤醒原因（**类型化**）。
+##
+## 【为什么要有这个枚举】表现层（`SleepDirector` 的视野过渡）要区分
+##   「**渐进醒来**」和「**惊醒**」—— 前者缓缓把画面拉回来，后者一帧归零。
+##   如果只能比字符串（`wake_reason() == "附近有动静"`），那是**同值复制**：
+##   改一个字就静默失效（不报错、只是过渡方式悄悄变了）。枚举让编译器帮你守。
+##   字符串版的 `wake_reason()` 保留 —— 它给日志与 UI 用，人类要读的是中文。
+enum Wake {
+	NONE,        # 还没醒过
+	RESTED,      # 睡够了（疲劳回满）
+	TOO_LONG,    # 睡太久了（到 MAX_SLEEP_MIN 上限）
+	DISTURBED,   # 附近有动静被吵醒 —— **唯一的"惊醒"**，表现上要一帧归零
+	MANUAL,      # 自己按 R 叫醒
+}
+
 ## 躺下到真正睡着的延迟（游戏分）。这一小段是"还能反悔"的窗口。
 const ONSET_MIN := 2.0
 
@@ -106,7 +121,8 @@ var _state: State = State.AWAKE
 var _timer := 0.0          # 当前状态的剩余/已用时间（游戏分），含义随状态变
 var _slept := 0.0          # 本次已睡多久（游戏分）
 var _just_woke := false    # 本帧刚醒（供 `SleepDirector` 立刻把时间倍速降回来）
-var _wake_reason := ""     # 唤醒原因（日志与 UI 用）
+var _wake_reason := ""     # 唤醒原因（日志与 UI 用，**中文给人读**）
+var _wake_kind: Wake = Wake.NONE   # 唤醒原因（逻辑用，**类型化给代码判**）—— 见 `Wake` 枚举
 ## 「背景名单」：**躺下那一刻**已经在唤醒半径内的生物 id。
 ## 他们动不会吵醒你（见 `_check_intruder()` 的长注释 —— 这是猪群活锁的解法）。
 var _known_nearby := {}
@@ -124,6 +140,7 @@ func setup(host: Node) -> void:
 	_slept = 0.0
 	_just_woke = false
 	_wake_reason = ""
+	_wake_kind = Wake.NONE
 	_known_nearby.clear()
 
 # ---------------- 生命周期 ----------------
@@ -136,7 +153,7 @@ func tick(dt: float) -> void:
 			_slept += dt
 			# 入睡途中也可能被吵醒 —— 这时候最便宜（还没睡进去）
 			if _check_intruder():
-				_wake("附近有动静", State.AWAKE)
+				_wake("附近有动静", Wake.DISTURBED, State.AWAKE)
 			elif _timer <= 0.0:
 				_state = State.ASLEEP
 				Log.ev("睡眠", "%s 睡着了" % creature.tag())
@@ -144,11 +161,11 @@ func tick(dt: float) -> void:
 			_slept += dt
 			_recover(dt)
 			if _check_intruder():
-				_wake("附近有动静", State.WAKING)
+				_wake("附近有动静", Wake.DISTURBED, State.WAKING)
 			elif fatigue_ratio() >= WAKE_FATIGUE_RATIO:
-				_wake("睡够了", State.WAKING)
+				_wake("睡够了", Wake.RESTED, State.WAKING)
 			elif _slept >= MAX_SLEEP_MIN:
-				_wake("睡太久了", State.WAKING)
+				_wake("睡太久了", Wake.TOO_LONG, State.WAKING)
 		State.WAKING:
 			_timer -= dt
 			if _timer <= 0.0:
@@ -179,8 +196,15 @@ func state_text() -> String:
 func just_woke() -> bool:
 	return _just_woke
 
+## 唤醒原因（**给人读的中文**，日志与 UI 用）。
 func wake_reason() -> String:
 	return _wake_reason
+
+## 唤醒原因（**给代码判的类型**）。表现层靠它区分「渐进醒来」与「惊醒」—— 见 `Wake` 枚举。
+##
+## ⚠ **判逻辑一律用这个，别用 `wake_reason()` 比字符串。** 那是同值复制，改一个字就静默失效。
+func wake_kind() -> Wake:
+	return _wake_kind
 
 ## 本次睡了多久（游戏分）。
 func slept_minutes() -> float:
@@ -204,6 +228,7 @@ func start() -> bool:
 	_timer = ONSET_MIN
 	_slept = 0.0
 	_wake_reason = ""
+	_wake_kind = Wake.NONE
 	_snapshot_nearby()          # 记下"身边已经是谁" —— 他们之后怎么动都不吵醒我
 	Log.ev("睡眠", "%s 躺下准备睡（疲劳 %.0f%%）" % [creature.tag(), fatigue_ratio() * 100.0])
 	return true
@@ -216,10 +241,13 @@ func can_sleep() -> bool:
 	return not is_sleeping() and fatigue_ratio() < WAKE_FATIGUE_RATIO
 
 ## 主动叫醒（玩家按键 / 将来被攻击）。
-func wake_up(reason: String = "主动醒来") -> void:
+##
+## ⚠ **`kind` 必须显式传**：表现层靠它决定"缓缓醒"还是"一帧醒"。
+##   默认 `MANUAL`（温和）—— 主动叫醒不该是惊醒。
+func wake_up(reason: String = "主动醒来", kind: Wake = Wake.MANUAL) -> void:
 	if _state == State.AWAKE:
 		return
-	_wake(reason, State.WAKING)
+	_wake(reason, kind, State.WAKING)
 
 # ---------------- 协议实现 ----------------
 
@@ -241,11 +269,13 @@ func sense_multiplier() -> float:
 
 # ---------------- 内部 ----------------
 
-func _wake(reason: String, next: State) -> void:
+## 唯一的"醒来"出口。`reason` 给人读，`kind` 给代码判 —— 见 `Wake` 枚举。
+func _wake(reason: String, kind: Wake, next: State) -> void:
 	_state = next
 	_timer = WAKING_MIN if next == State.WAKING else 0.0
 	_just_woke = true
 	_wake_reason = reason
+	_wake_kind = kind
 	_known_nearby.clear()       # 醒了就不再有"背景名单"，下次躺下重新快照
 	Log.ev("睡眠", "%s 醒了（%s），已睡 %.0f 游戏分" % [creature.tag(), reason, _slept])
 	_slept = 0.0

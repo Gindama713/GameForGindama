@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://world/sleep_director.gd" id="14_sleepdir"]
 
@@ -15,6 +15,8 @@
 [ext_resource type="Script" path="res://world/water_layer.gd" id="10_water"]
 [ext_resource type="Script" path="res://ui/player_hud.gd" id="11_hud"]
 [ext_resource type="Script" path="res://ui/player_panel.gd" id="12_panel"]
+[ext_resource type="Script" path="res://ui/sleep_fade.gd" id="15_fade"]
+[ext_resource type="ShaderMaterial" path="res://ui/sleep_fade.tres" id="16_fade_mat"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1")
@@ -40,6 +42,10 @@ script = ExtResource("9_cam")
 
 [node name="NightOverlay" type="ColorRect" parent="UI"]
 script = ExtResource("8_night")
+
+[node name="SleepFade" type="ColorRect" parent="UI"]
+material = ExtResource("16_fade_mat")
+script = ExtResource("15_fade")
 
 [node name="CreatureInspector" type="PanelContainer" parent="UI"]
 script = ExtResource("3_inspector")

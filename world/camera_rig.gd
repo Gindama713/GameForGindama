@@ -25,6 +25,10 @@ const ZOOM_STEP := 1.12      # 每次滚轮放大倍率
 const MIN_ZOOM := 1.0        # 与"以前的一屏"一样大 —— 不允许更小
 const MAX_ZOOM := 4.0
 
+## 入睡时**额外**推近的倍率（2026-09-22）。"微微放大"—— 1.14 = 视野收窄约 12%。
+## ⚠ 它是**乘在玩家当前缩放上**的（见 `_apply_zoom()`），不是覆盖。
+const SLEEP_ZOOM_IN := 1.14
+
 ## —— 软跟随参数（占位）——
 ## FOLLOW_DAMP 越大越紧跟。用**指数平滑**（`1 - exp(-k·dt)`）而不是固定 lerp 系数：
 ##   它让"每秒钟收敛掉的比例"与帧率**无关**（固定系数在 60fps / 144fps 下手感会不一样）。
@@ -35,14 +39,37 @@ const DEADZONE_PX := 6.0
 ## 跟随目标（主角）。null = 自由镜头（原行为）。
 var target: Node2D = null
 
+## **玩家自己选的**缩放（滚轮改它）。实际 `zoom` 是它乘上睡眠因子 —— 见 `_apply_zoom()`。
+var _base_zoom := 1.0
+## 睡眠视野进度 0..1，由 `EventBus.sleep_view_changed` 喂。**本节点不认识 `Sleep` 组件**。
+var _sleep_t := 0.0
+
 var _dragging := false
 
 func _ready() -> void:
 	make_current()
-	zoom = Vector2.ONE                 # 视野与地图变大之前一致
+	_base_zoom = 1.0
+	_apply_zoom()                      # 视野与地图变大之前一致
 	position = _world_size() * 0.5     # 摆在地图中心 —— 也正是高草区所在
+	EventBus.sleep_view_changed.connect(_on_sleep_view_changed)
 	if get_viewport() != null:
 		get_viewport().size_changed.connect(_clamp_position)
+
+## 睡眠视野过渡（2026-09-22）。与 `SleepFade` 一样是**哑消费者** —— 只收一个 float。
+func _on_sleep_view_changed(t: float) -> void:
+	if is_equal_approx(t, _sleep_t):
+		return
+	_sleep_t = t
+	_apply_zoom()
+
+## 实际缩放 = **玩家选的基准** × 睡眠推近因子。
+##
+## ⚠ **必须相乘，不能覆盖**：如果入睡时直接写 `zoom = SLEEP_ZOOM_IN`，
+##   玩家手动放大到 2.0 之后一睡觉就被拉回 1.14 —— "我明明放大了，睡一觉给我缩回去了"。
+##   相乘则 2.0 → 2.28，语义正确（"入睡时比你现在看到的再近一点"）。
+func _apply_zoom() -> void:
+	var z := _base_zoom * lerpf(1.0, SLEEP_ZOOM_IN, clampf(_sleep_t, 0.0, 1.0))
+	zoom = Vector2(z, z)
 
 ## 设定跟随目标。传 null 可退回自由镜头（键盘平移重新生效）。
 ## 由 main 在生成主角后调用 —— 相机**不认识**主角是谁，只知道"跟着某个 Node2D"。
@@ -110,8 +137,9 @@ func _process(delta: float) -> void:
 ## 以鼠标为中心放大：缩放前后让「鼠标下的那个世界点」保持不动。
 func _zoom_at_mouse(factor: float) -> void:
 	var before := get_global_mouse_position()
-	var z: float = clampf(zoom.x * factor, MIN_ZOOM, MAX_ZOOM)
-	zoom = Vector2(z, z)
+	# 改的是**基准**，实际 `zoom` 由 `_apply_zoom()` 统一算（含睡眠因子）—— 只此一处写 `zoom`
+	_base_zoom = clampf(_base_zoom * factor, MIN_ZOOM, MAX_ZOOM)
+	_apply_zoom()
 	position += before - get_global_mouse_position()
 	_clamp_position()
 

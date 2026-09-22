@@ -30,3 +30,13 @@ signal birth_requested(mother: Node, father: Node)  # Reproduction 请求生育�
 ##   这个是"玩家有身体了" —— HUD / 相机 / 输入这类**只在有主角时才有意义**的订阅者听它。
 ## 分开的理由：DebugToolbar 可以刷出一百只猪（creature_spawned ×100），但主角全场只有一个。
 signal player_spawned(player: Node)
+
+# —— 睡眠视野过渡（2026-09-22）——
+## 入睡 / 醒来的**画面过渡进度**：`t` = 0 是完全清醒的视野，1 是完全入睡。
+##
+## 【为什么走总线而不是直接调用】生产者只有 `SleepDirector` 一个，
+##   而消费者现在就有两个（`SleepFade` 画暗角、`CameraRig` 推近），将来还可能有音频 / 手柄震动。
+##   两边**互不认识**，只认识一个 `float` —— 加第三个消费者不用动前面任何一处（§6.5 解耦纪律）。
+##
+## ⚠ 本信号只在**过渡期间**逐帧发射（睡着后 `t` 恒为 1，不再发）。
+signal sleep_view_changed(t: float)
