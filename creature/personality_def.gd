@@ -20,3 +20,14 @@ enum GenerationMode {
 @export var generation_mode: GenerationMode = GenerationMode.CORRELATED
 @export var spread: float = 0.18          # 独立维度的正态离散度 σ（占位值，待调）
 @export var push_from_half: float = 0.0   # 0=值聚在 0.5 附近（默认：居中的平均个体）；越大越把值推离 0.5（个体更极端）
+
+## 定义校验（空数组 = 通过）。由 `DefValidator` 启动期扫描时调用。
+## 【为什么校验在自己身上】见 `body_part_def.gd` 里同一段注释 ——
+##   集中式校验器要逐个点名 Def 类，那是底层反向依赖上层；放在这里校验器只需鸭子类型。
+func validate() -> Array[String]:
+	var errs: Array[String] = []
+	if spread < 0.0:
+		errs.append("性格分布 spread 不能为负（当前 %.2f）" % spread)
+	if push_from_half < 0.0 or push_from_half > 1.0:
+		errs.append("性格分布 push_from_half 需在 0..1（当前 %.2f）" % push_from_half)
+	return errs

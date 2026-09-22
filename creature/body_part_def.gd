@@ -29,3 +29,19 @@ func is_limb() -> bool:
 
 func has_limb_type(t: String) -> bool:
 	return limb_types.has(t)
+
+## 定义校验（空数组 = 通过）。由 `DefValidator` 启动期扫描时调用。
+##
+## 【为什么校验在自己身上，而不是集中在一个校验器里】
+##   集中式校验器必须 `res is BodyPartDef` 这样逐个点名 —— 那是**反向依赖**：
+##   `common/`（底层）反过来认识 `creature/`（上层）。而且每加一种 Def 都要回去改它。
+##   放在这里之后，校验器只需要问一句 `res.has_method("validate")` ——
+##   **零编译期依赖，加新 Def 不用碰它一行。**
+##   本项目的 `CreatureDef` / `LifeDef` / `GrassDef` / `GrasslandDef` / `LakeDef` 一直是这么做的。
+func validate() -> Array[String]:
+	var errs: Array[String] = []
+	if id.strip_edges().is_empty():
+		errs.append("部位缺 id")
+	if max_hp <= 0.0:
+		errs.append("部位 %s 的 max_hp 必须 > 0（当前 %.1f）" % [id, max_hp])
+	return errs

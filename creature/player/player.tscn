@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://creature/creature.gd" id="1_creature"]
 [ext_resource type="Resource" path="res://creature/player/player_def.tres" id="2_def"]
 [ext_resource type="Texture2D" path="res://creature/player/art/character.png" id="3_sprite"]
-[ext_resource type="Script" path="res://creature/sprint_arc.gd" id="9_arc"]
+[ext_resource type="Script" path="res://creature/player/sprint_arc.gd" id="9_arc"]
 
 [node name="Player" type="Node2D"]
 script = ExtResource("1_creature")

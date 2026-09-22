@@ -15,3 +15,16 @@ extends Resource
 ## 说明：这是「见底有后果」的最小实现 —— 直接判死。
 ## 将来要改成渐进掉血时，只需把这里换成「每秒扣血」类的数据，架构不用动。
 @export var depleted_is_lethal: bool = false
+
+## 定义校验（空数组 = 通过）。由 `DefValidator` 启动期扫描时调用。
+## 【为什么校验在自己身上】见 `body_part_def.gd` 里同一段注释 ——
+##   集中式校验器要逐个点名 Def 类，那是底层反向依赖上层；放在这里校验器只需鸭子类型。
+func validate() -> Array[String]:
+	var errs: Array[String] = []
+	if id.strip_edges().is_empty():
+		errs.append("需求缺 id")
+	if max_value <= 0.0:
+		errs.append("需求 %s 的 max_value 必须 > 0（当前 %.1f）" % [id, max_value])
+	if drain_rate < 0.0:
+		errs.append("需求 %s 的 drain_rate 不能为负（当前 %.1f）" % [id, drain_rate])
+	return errs

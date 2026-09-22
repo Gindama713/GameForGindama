@@ -1,7 +1,7 @@
 extends Node
 
 ## 启动期定义校验（Autoload）。
-## 扫描 res://creature 下所有 .tres 定义，逐个校验并**报错**。
+## 扫描 `SCAN_ROOTS` 下所有 `.tres` 定义，逐个校验并**报错**。
 ##
 ## 这是 CDDA「四阶段加载 → check_all」的最小落地：在继续堆数据之前，
 ## 先把「配错了会立刻喊出来」建起来。否则数据错了只有两个结局 ——
@@ -10,6 +10,27 @@ extends Node
 ## 与运行期校验的分工：
 ##   DefValidator（本文件）—— 启动期扫**全部**定义，连没被生成的物种也查。
 ##   Creature._ready()     —— 生成时再查一次，校验没通过就直接拒绝生成。
+##
+## ══════════════════════════════════════════════════════════════════
+## 【2026-09-22 重构】为什么本文件**不点名任何具体 Def 类**
+## ══════════════════════════════════════════════════════════════════
+##   改之前这里是一串 `if res is CreatureDef: ... elif res is BodyPartDef: ...`，
+##   点名了 8 个类（`CreatureDef` / `BodyPartDef` / `NeedDef` / `PersonalityDef` /
+##   `GrassDef` / `LifeDef` / `LakeDef` / `GrasslandDef`）。两个问题：
+##     ① **反向依赖**：本文件住在 `common/`（底层），却认识 `creature/` 与 `world/`（上层）。
+##        于是 `common/` 永远不能当"可复用的底层"用。
+##     ② **每加一种 Def 都要回来改它** —— 加物种是"只配数据"的纪律（§6.9）在这里破了个口。
+##
+##   ⇒ 改成**鸭子类型**：只问 `res.has_method("validate")`，调它，收结果。
+##     校验规则归**各 Def 自己**（`BodyPartDef.validate()` 等），本文件只负责
+##     「**去哪找**」和「**怎么报**」两件事。
+##     代价是零：本项目的 `CreatureDef` / `LifeDef` / `GrassDef` / `GrasslandDef` /
+##     `LakeDef` 一直都是自带 `validate()` 的，只是另三个（部位/需求/性格）的规则
+##     之前被写在了这里，本轮搬回它们自己身上。
+##
+##   ⚠ **目录仍然是契约**：`SCAN_ROOTS` 是"定义资源住在哪"的唯一事实来源。
+##     这是本文件仅剩的一处对外知识，且它指的是**数据位置**、不是**代码类型**。
+##     改目录布局时**必须同步改这里**（这也是它被写在文件顶部的原因）。
 
 const SCAN_ROOTS: Array[String] = ["res://creature", "res://world/grass", "res://world/grassland", "res://world/lake"]
 
@@ -50,50 +71,22 @@ func validate_all() -> int:
 		print("[定义校验] 扫描 %d 个定义文件，其中 %d 个有问题（共 %d 条）" % [paths.size(), bad_files, problems])
 	return problems
 
+## 鸭子类型校验：**不点名任何具体类**（理由见文件头）。
+##
+## ⚠ 扫到「没有 `validate()` 的资源」要**报出来**，不能静默跳过：
+##   那几个目录下的 `.tres` 约定**全部**是定义资源（都该自带 `validate()`）。
+##   出现一个没有的，要么是放错了目录，要么是新 Def 忘了写 `validate()` ——
+##   两种都该在启动期就看见，而不是等到运行期数据出错。
 func _validate_resource(res: Resource) -> Array[String]:
-	if res is CreatureDef:
-		return (res as CreatureDef).validate()
-	if res is BodyPartDef:
-		return _validate_part(res as BodyPartDef)
-	if res is NeedDef:
-		return _validate_need(res as NeedDef)
-	if res is PersonalityDef:
-		return _validate_personality(res as PersonalityDef)
-	if res is GrassDef:
-		return (res as GrassDef).validate()
-	if res is LifeDef:
-		return (res as LifeDef).validate()
-	if res is LakeDef:
-		return (res as LakeDef).validate()
-	if res is GrasslandDef:
-		return (res as GrasslandDef).validate()
-	return []
-
-func _validate_part(p: BodyPartDef) -> Array[String]:
-	var errs: Array[String] = []
-	if p.id.strip_edges().is_empty():
-		errs.append("部位缺 id")
-	if p.max_hp <= 0.0:
-		errs.append("部位 %s 的 max_hp 必须 > 0（当前 %.1f）" % [p.id, p.max_hp])
-	return errs
-
-func _validate_need(n: NeedDef) -> Array[String]:
-	var errs: Array[String] = []
-	if n.id.strip_edges().is_empty():
-		errs.append("需求缺 id")
-	if n.max_value <= 0.0:
-		errs.append("需求 %s 的 max_value 必须 > 0（当前 %.1f）" % [n.id, n.max_value])
-	if n.drain_rate < 0.0:
-		errs.append("需求 %s 的 drain_rate 不能为负（当前 %.1f）" % [n.id, n.drain_rate])
-	return errs
-
-func _validate_personality(p: PersonalityDef) -> Array[String]:
-	var errs: Array[String] = []
-	if p.spread < 0.0:
-		errs.append("性格分布 spread 不能为负（当前 %.2f）" % p.spread)
-	if p.push_from_half < 0.0 or p.push_from_half > 1.0:
-		errs.append("性格分布 push_from_half 需在 0..1（当前 %.2f）" % p.push_from_half)
-	return errs
+	if not res.has_method("validate"):
+		return ["这个资源没有 validate() —— %s 目录下的 .tres 约定都是定义资源（放错目录？或新 Def 忘了写 validate()？）" % res.get_class()]
+	var raw: Variant = res.call("validate")
+	if not (raw is Array):
+		return ["validate() 的返回值不是 Array（实际 %s）" % type_string(typeof(raw))]
+	var out: Array[String] = []
+	for e in raw:
+		out.append(str(e))
+	return out
 
 ## 递归收集 .tres 路径
 func _collect_tres(root: String) -> Array[String]:
