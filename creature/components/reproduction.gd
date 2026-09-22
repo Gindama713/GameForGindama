@@ -8,10 +8,10 @@ extends CreatureComponent
 ## 【限流防爆炸】冷却 + 营养门槛 + 种群软上限（Main 侧再查一次）三重闸。
 ## 【先判便宜条件再搜索】性别/年龄/冷却/营养都不满足时直接 return，不做邻域搜索（省性能）。
 
-## 营养门槛查哪两项需求。**与 `Grazing.FOOD_ID` / `Drinking.THIRST_ID` 同字面量** ——
-## 原先这里直接写裸字符串 `need_by_id("food")`，是全项目唯一没定义常量的一处（不一致，已补齐）。
-const FOOD_ID := "food"
-const WATER_ID := "water"
+## 营养门槛查哪两项需求。字面量收敛到 `NeedIds`（唯一事实来源）——
+## 原先这里直接写裸字符串 `need_by_id("food")`，是全项目唯一没定义常量的一处（已补齐；2026-09-22 又收敛到 NeedIds）。
+const FOOD_ID := NeedIds.FOOD
+const WATER_ID := NeedIds.WATER
 
 var _cooldown: float = 0.0
 

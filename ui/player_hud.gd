@@ -10,7 +10,7 @@ extends Control
 ##   ⚠ 只在**文本/比例真的变了**才写控件 —— 避免每帧触发无谓的 queue_redraw 与重排。
 
 ## 主角需求显示顺序与中文名。**不是硬编码组件**：按 id 问 Needs 要，缺哪条就不显示哪条。
-const NEED_ORDER: Array[String] = ["food", "water", "warmth", "fatigue"]
+const NEED_ORDER: Array[String] = [NeedIds.FOOD, NeedIds.WATER, NeedIds.WARMTH, NeedIds.FATIGUE]
 const NEED_COLS := 2           # 需求 2 列 × 2 行（左右不再挤成一条长龙）
 
 const BAR_SEGMENTS := 10       # 每条需求/总血的像素条段数

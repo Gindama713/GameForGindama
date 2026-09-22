@@ -27,12 +27,10 @@ const CELL_FONT_SIZE := 11     # 格子内容用原生尺寸：信息密集区�
 ## 【2026-09-21】字面量收敛到 `common/groups.gd`（原先三处各写一遍）。
 const GROUP_PLAYER := Groups.PLAYER
 
-## 大脑驱动名 → 中文（状态行显示）
-const DRIVE_LABEL := {
-	"wander": "游荡", "social": "合群", "separate": "独行",
-	"rest": "休息", "blocked": "被围", "idle": "发呆",
-	"feed": "觅食", "cling": "跟妈", "drink": "饮水",
-}
+## 大脑驱动名 → 中文：**表在生产者那边**（`Brain.DRIVE_LABELS` / `Brain.drive_label()`）。
+## ⚠ 别在本文件再抄一份 —— 抄了就会静默过期：`brain.gd` 改了驱动名，这里只会显示英文原文
+##   （`Dictionary.get()` 返回 null 走兜底，不报错）。`flee` / `huddle` 当初就是这么漏的。
+## 【2026-09-22】原先这里那份 9 条的 `DRIVE_LABEL` 已删除。
 
 var _creature: Creature
 var _title_bar: HBoxContainer
@@ -320,7 +318,7 @@ func _refresh() -> void:
 	var brain := _creature.get_component(Brain) as Brain
 	var drive: String = brain.last_drive if brain != null else "-"
 	var soc: float = person.sociability() if person != null else 0.5
-	_state_lbl.text = "状态 %s · 合群 %.2f" % [DRIVE_LABEL.get(drive, drive), soc]
+	_state_lbl.text = "状态 %s · 合群 %.2f" % [Brain.drive_label(drive), soc]
 
 func _on_random_wound() -> void:
 	if _creature == null:
@@ -337,7 +335,7 @@ func _on_close() -> void:
 # ---------------- 族谱树入口（唯一按钮） ----------------
 func _on_open_tree() -> void:
 	if _creature == null or not is_instance_valid(_creature):
-		Log.ev("调试", "族谱：请先点选一只猪")
+		Log.ev(Log.CAT_DEBUG, "族谱：请先点选一只猪")
 		return
 	if _tree == null:
 		_tree = FamilyTree.new()

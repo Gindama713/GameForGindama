@@ -218,7 +218,7 @@ func _apply_speed() -> void:
 		return
 	_applied = want
 	TimeSystem.speed = want
-	Log.ev("睡眠", "时间倍率 -> ×%.0f" % want)
+	Log.ev(Log.CAT_SLEEP, "时间倍率 -> ×%.0f" % want)
 
 func _emit(force: bool) -> void:
 	if not force and is_equal_approx(_t, _emitted):

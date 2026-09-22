@@ -33,8 +33,8 @@ const FORAGE_RADIUS := 100
 ## 否则一株远处的嫩草会把猪从整片草场上拽走（与"守着草饿死"是同一个病的两面）。
 ## 取 12：和"草原 ↔ 水"那条间隙（`LakeDef.anchor_gap`）同一个量级，绕这点路是划算的。
 const TENDER_PREFER_RADIUS := 12
-const FOOD_ID := "food"           # 吃哪一项需求（饱食度）
-const WATER_ID := "water"         # 吃草也顺带解一点口渴
+const FOOD_ID := NeedIds.FOOD      # 吃哪一项需求（饱食度）
+const WATER_ID := NeedIds.WATER    # 吃草也顺带解一点口渴
 const SATIETY_STOP := 0.95        # food 比例 ≥ 此值就停嘴（吃饱不再空啃、护草）
 
 var _bite_timer: float = 0.0

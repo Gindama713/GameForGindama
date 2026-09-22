@@ -41,7 +41,7 @@ const NIGHT_REST_BONUS := 3.0      # 夜晚→休息加权（远大于白天 →
 ##   ⇒ **猪的疲劳永远顶在 100，"满槽撑 2 个游戏日"这个设计从来没生效过。**
 ##   现在恢复速率归 `Sleep.RECOVER_PER_MIN`（0.1）管 —— 睡眠时长与恢复速率**同源**，
 ##   不再一个住在 `Brain`、一个住在别处。本组件**不再自己回疲劳**。
-const FATIGUE_ID := "fatigue"      # 用哪个需求当「疲劳」—— Brain 唯一需要的需求 id（别再散写字符串）
+const FATIGUE_ID := NeedIds.FATIGUE   # 用哪个需求当「疲劳」。字面量收敛到 NeedIds（唯一事实来源，见 creature/need_ids.gd）
 ## 觅食驱动权重 = 饥饿度(0..1) × FEED_GAIN。
 ## **已实测调过**：4.0 时权重被轮盘摊薄 -> 饿着的猪也只有约 1/3 的决策朝草走；
 ##   而"一次休息"买 60~150 游戏分的静止、"一次移动"只买 1 格 -> **时间账上永远被休息压死**，
@@ -63,6 +63,26 @@ const CLING_WEIGHT := 3.0          # 幼崽"跟妈"驱动权重（< 饿极了的
 ##   ⚠ 粘性有步数上限：目标不可达时不会永久卡死（到点就恢复常规轮盘）。
 const TRAVEL_STICKY := 4.0         # 粘住的目标驱动：权重 ×该值
 const TRAVEL_STICKY_STEPS := 12    # 粘性最多维持这么多次决策
+
+## —— 驱动名的中文标签（检视面板 / HUD 的状态行显示）——
+## 【为什么放在**生产者**这边】驱动名的生产者是本文件（`drive_table` 与各处 `last_drive = "…"`）。
+##   这张表此前放在 `ui/creature_inspector.gd` 里 —— 那就是**第二份副本**：
+##   在 `brain.gd` 改一个驱动名 → UI 走 `Dictionary.get(drive, drive)` 的兜底，
+##   **静默显示英文原文**，不报错。⚠ 这不是假设：`flee` 与 `huddle` 当初就这么漏了两条，
+##   一直在面板上显示英文（2026-09-22 修）。
+## ⚠ 加驱动 = ① `drive_table` 加一条 ② `match chosen` 加分支 ③ 本表加中文。三处都要动
+##   （前两条是"数据 + 行为"，收不进一张表；但"改名忘了改中文"这个错法从此只在你自己身上）。
+##   `blocked` 不在轮盘里 —— 它由 `_decide_and_act` 开头"四面被堵"时直接置位，也得有中文。
+const DRIVE_LABELS := {
+	"wander": "游荡", "social": "合群", "separate": "独行",
+	"rest": "休息", "blocked": "被围", "idle": "发呆",
+	"feed": "觅食", "cling": "跟妈", "drink": "饮水",
+	"flee": "逃命", "huddle": "抱团",
+}
+
+## 驱动名 → 中文。未知驱动名**原样返回**（不静默丢成空串，至少还能看出是哪个驱动漏登记了）。
+static func drive_label(drive: String) -> String:
+	return DRIVE_LABELS.get(drive, drive)
 
 ## —— 逃命（flee，2026-09-20 加）——
 ## 【为什么需要它】用户要求"动物也能疾跑，好更快逃离危险"。但**"危险"必须有个来源**：

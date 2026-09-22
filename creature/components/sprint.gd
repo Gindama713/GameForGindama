@@ -62,8 +62,8 @@ extends CreatureComponent
 ##   不管：**往哪跑**（Brain / PlayerBrain）、**体力怎么显示**（`creature/sprint_arc.gd`）、
 ##        **疲劳条自己的账**（那是 `need_fatigue.tres` 的 `drain_rate`，本组件只通过协议 8 影响倍率）。
 
-## 用哪条需求当**疲劳**（也就是体力上限的来源）。与 `Needs.FATIGUE_ID` / `Brain.FATIGUE_ID` 同字面量。
-const STAMINA_ID := "fatigue"
+## 用哪条需求当**疲劳**（也就是体力上限的来源）。字面量收敛到 `NeedIds.FATIGUE`（唯一事实来源）。
+const STAMINA_ID := NeedIds.FATIGUE
 
 ## 跑步速度倍率（用户拍板：快两倍；**CDDA 的跑步也是"移动消耗减半"= 2×**，两者一致）。
 const SPEED_MULT := 2.0
@@ -323,7 +323,7 @@ func _caller_hint() -> String:
 func _start() -> void:
 	_running = true
 	_run_seconds = 0.0
-	Log.ev("疾跑", "%s 起步（体力 %.0f/%.0f，速度系数 %.2f）" % [
+	Log.ev(Log.CAT_SPRINT, "%s 起步（体力 %.0f/%.0f，速度系数 %.2f）" % [
 		creature.tag(), _stamina, stamina_max(), creature.current_speed()])
 
 func _stop() -> void:
@@ -337,7 +337,7 @@ func _exhaust() -> void:
 	_run_seconds = 0.0
 	_cooldown = EXHAUST_COOLDOWN
 	_rest_timer = RECOVER_DELAY
-	Log.ev("疾跑", "%s 跑脱力了，需喘 %d 秒" % [creature.tag(), int(EXHAUST_COOLDOWN)])
+	Log.ev(Log.CAT_SPRINT, "%s 跑脱力了，需喘 %d 秒" % [creature.tag(), int(EXHAUST_COOLDOWN)])
 
 ## 按 dt（游戏分）扣体力。**唯一写入口**。
 ## ⚠ **不碰疲劳值** —— 疲劳那笔账由协议 8 的"倍率"影响（`Needs` 去扣），本组件不直接写它。

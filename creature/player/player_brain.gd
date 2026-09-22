@@ -76,7 +76,7 @@ func tick(dt: float) -> void:
 			#   "要不要告诉玩家"是调用方的事 —— `Brain` 的 rest 驱动每秒都会试一次，
 			#   日志写在组件里会让一只疲劳满的猪**每秒刷一行**（见 `Sleep.start()` 注释）。
 			#   玩家按键则**必须有反馈**，否则就是"按了没反应"。
-			Log.ev("睡眠", "还不困（疲劳 %.0f%%），睡不着" % [sl.fatigue_ratio() * 100.0])
+			Log.ev(Log.CAT_SLEEP, "还不困（疲劳 %.0f%%），睡不着" % [sl.fatigue_ratio() * 100.0])
 	_sleep_key_prev = key_down
 
 	# **睡着时不行动**：不读方向、不举疾跑意图（躺着不可能在跑）。

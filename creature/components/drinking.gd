@@ -23,7 +23,7 @@ extends CreatureComponent
 ##
 ## 【可复现】本组件不用随机数（纯几何 + 需求读取）-> 不扰动个体 RNG 序列。
 
-const THIRST_ID := "water"                 # 需求 id（口渴）
+const THIRST_ID := NeedIds.WATER             # 需求 id（口渴）· 字面量收敛到 NeedIds
 const WATER_TERRAIN := Terrain.WATER       # 地形 id。恰好与需求同字，但**语义不同**，别合并
 const DIRS: Array[Vector2i] = GridMover.DIRS   # 只认 4 邻（用户拍板；放开 8 邻见方案 §7-B）
 

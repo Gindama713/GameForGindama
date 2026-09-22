@@ -196,11 +196,11 @@ func _spawn_player(g_centers: Array, g_reaches: Array, g_majors: Array,
 	#   （因为它在 add_child 那一刻就跑了）。这里补一条**改完之后**的，避免日志与实际不符误导排查。
 	var ag := p.get_component(Aging) as Aging
 	if ag != null:
-		Log.ev("生成", "主角 @%s（第 %d 片草原旁）年龄 %.2f/%.2f 天[%s] 体型%.0f%% 速度%.2f" % [
+		Log.ev(Log.CAT_SPAWN, "主角 @%s（第 %d 片草原旁）年龄 %.2f/%.2f 天[%s] 体型%.0f%% 速度%.2f" % [
 			spawn, gi, TimeSystem.minutes_to_days(ag.age_min), TimeSystem.minutes_to_days(ag.lifespan_min),
 			["幼", "成", "老"][ag.stage()], ag.size_ratio() * 100.0, p.locomotion_speed()])
 	else:
-		Log.ev("生成", "主角 @%s（第 %d 片草原旁）" % [spawn, gi])
+		Log.ev(Log.CAT_SPAWN, "主角 @%s（第 %d 片草原旁）" % [spawn, gi])
 	return p
 
 ## 主角的起始年龄 = 寿命 × SPAWN_AGE_RATIO（**青年偏成年**）。
@@ -291,7 +291,7 @@ func _spawn_offspring(mother: Creature, father: Creature) -> void:
 	if ca != null and ma != null and fa != null and life != null:
 		var mean_life := (ma.lifespan_min + fa.lifespan_min) * 0.5
 		ca.lifespan_min = mean_life * child.rng.randf_range(1.0 - life.variance, 1.0 + life.variance)
-	Log.ev("生成", "%s 出生（母#%d 父#%d）@%s" % [child.tag(), mother.id, father.id, at])
+	Log.ev(Log.CAT_SPAWN, "%s 出生（母#%d 父#%d）@%s" % [child.tag(), mother.id, father.id, at])
 
 ## 母亲周围找一个空且可踩的格（8 邻域）；没有返回 (-1,-1)。
 func _free_adjacent(center: Vector2i) -> Vector2i:
@@ -393,7 +393,7 @@ func clear_creatures() -> int:
 		c.queue_free()
 		removed += 1
 	if removed > 0:
-		Log.ev("调试", "清屏：移除 %d 只生物" % removed)
+		Log.ev(Log.CAT_DEBUG, "清屏：移除 %d 只生物" % removed)
 	return removed
 
 ## 场上生物数量（调试/自检用）

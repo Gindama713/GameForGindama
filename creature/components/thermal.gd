@@ -53,8 +53,8 @@ extends CreatureComponent
 ## 本组件的调试前缀（协议 3 的自述用）
 const TAG := "体温"
 
-## 用哪条需求当「保暖」。与 `Needs` 里的 id 同一个字面量（既有的债，见 needs.gd 注释）。
-const WARMTH_ID := "warmth"
+## 用哪条需求当「保暖」。字面量收敛到 `NeedIds.WARMTH`（唯一事实来源）—— 不再是「既有的债」。
+const WARMTH_ID := NeedIds.WARMTH
 
 ## 夜里每秒（= 每游戏分，见 time_system.gd 的 1:1 映射）掉多少保暖。
 ## 取 0.1 的理由见文件头表格：独猪一夜正好掉 60、剩 40 —— 冷但不死。
@@ -143,7 +143,7 @@ func tick(dt: float) -> void:
 		n.value = minf(before + DAY_RECOVER_PER_SEC * dt, n.def.max_value)
 		# 只在**跨过满值那一帧**报一次（否则每天会刷一屏）
 		if before < n.def.max_value and n.value >= n.def.max_value:
-			Log.ev("需求", "%s 暖和过来了（%s 回满）" % [creature.tag(), n.def.label])
+			Log.ev(Log.CAT_NEED, "%s 暖和过来了（%s 回满）" % [creature.tag(), n.def.label])
 
 # ---------------- 对外查询 ----------------
 

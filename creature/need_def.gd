@@ -23,6 +23,15 @@ func validate() -> Array[String]:
 	var errs: Array[String] = []
 	if id.strip_edges().is_empty():
 		errs.append("需求缺 id")
+	elif not NeedIds.ALL.has(id):
+		# 与 `NeedIds.ALL` 对账（§6.10「配错了要立刻喊出来」）。
+		# 【为什么值得一条】漏改任一侧 ⇒ `Needs.need_by_id()` 返回 null ⇒ 而每个调用点都有
+		#   `if n == null: return` 的兜底（那本身是好习惯）⇒ **不报错、不崩溃，
+		#   只是那个机制悄悄不工作**（例：只改 sprint 那处常量 ⇒ 疾跑永不消耗体力，零日志）。
+		#   这类错运行期完全看不出来，只能在启动期拦下 —— 而且**两个方向都拦**：
+		#   改 `.tres` 漏改常量、改常量漏改 `.tres`，都会在这里命中。
+		errs.append("需求 id「%s」不在 NeedIds.ALL 里 —— 请同步 creature/need_ids.gd（当前表：%s）" % [
+			id, ", ".join(NeedIds.ALL)])
 	if max_value <= 0.0:
 		errs.append("需求 %s 的 max_value 必须 > 0（当前 %.1f）" % [id, max_value])
 	if drain_rate < 0.0:

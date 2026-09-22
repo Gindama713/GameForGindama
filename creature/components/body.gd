@@ -50,11 +50,11 @@ func _note(part: BodyPart) -> void:
 	if part.hp <= 0.0:
 		if not part.down_logged():
 			part.mark_down_logged()
-			Log.ev("受伤", "%s %s 失能 (0/%.0f)" % [creature.tag(), part.def.label, part.def.max_hp])
+			Log.ev(Log.CAT_HURT, "%s %s 失能 (0/%.0f)" % [creature.tag(), part.def.label, part.def.max_hp])
 		return
 	if not part.half_logged() and part.ratio() < 0.5:
 		part.mark_half_logged()
-		var cat := "失血" if part.bleeding > 0.0 else "受伤"
+		var cat := Log.CAT_BLEED if part.bleeding > 0.0 else Log.CAT_HURT
 		Log.ev(cat, "%s %s 掉到 50%% 以下 (%.0f/%.0f)" % [creature.tag(), part.def.label, part.hp, part.def.max_hp])
 
 # ---------------- 协议实现 ----------------
@@ -172,6 +172,6 @@ func random_wound() -> BodyPart:
 	var part: BodyPart = parts[creature.rng.randi_range(0, parts.size() - 1)]
 	var dmg: float = creature.rng.randf_range(15.0, 45.0)
 	var bl: float = creature.rng.randf_range(1.0, 4.0)
-	Log.ev("受伤", "%s %s -%.1f 出血+%.1f/s (调试致伤)" % [creature.tag(), part.def.label, dmg, bl])
+	Log.ev(Log.CAT_HURT, "%s %s -%.1f 出血+%.1f/s (调试致伤)" % [creature.tag(), part.def.label, dmg, bl])
 	hurt(part, dmg, bl)
 	return part

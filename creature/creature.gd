@@ -97,7 +97,7 @@ func _log_spawn() -> void:
 	var s := "%s @%s 组件[%s]" % [tag(), coord, ", ".join(comp_names)]
 	if not frags.is_empty():
 		s += " " + " ".join(frags)
-	Log.ev("生成", s)
+	Log.ev(Log.CAT_SPAWN, s)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
@@ -228,7 +228,7 @@ func die() -> void:
 		_sprite.modulate = DEAD_COLOR            # 有图：调暗
 	queue_redraw()                              # 无图：色块由 _draw 自己变暗
 	var suffix := "" if why.is_empty() else "（%s）" % why
-	Log.ev("死亡", "%s%s 死亡 @%s，模拟停止" % [tag(), suffix, coord])
+	Log.ev(Log.CAT_DEATH, "%s%s 死亡 @%s，模拟停止" % [tag(), suffix, coord])
 	EventBus.creature_died.emit(self)
 
 ## 每帧 tick 末尾的统一接线：全项目只有这里会「问一次生死」。谁都不必记得自己查。
@@ -286,7 +286,7 @@ func move_to(target: Vector2i) -> bool:
 	if not can_place_at(target):
 		push_error("[%s] 无法移动到 %s（越界或被占），已忽略" % [tag(), target])
 		return false
-	Log.ev("移动", "%s %s → %s" % [tag(), coord, target])
+	Log.ev(Log.CAT_MOVE, "%s %s → %s" % [tag(), coord, target])
 	_release_cell()
 	coord = target
 	var ok := _place_at(target)

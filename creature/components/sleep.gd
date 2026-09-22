@@ -156,7 +156,7 @@ func tick(dt: float) -> void:
 				_wake("附近有动静", Wake.DISTURBED, State.AWAKE)
 			elif _timer <= 0.0:
 				_state = State.ASLEEP
-				Log.ev("睡眠", "%s 睡着了" % creature.tag())
+				Log.ev(Log.CAT_SLEEP, "%s 睡着了" % creature.tag())
 		State.ASLEEP:
 			_slept += dt
 			_recover(dt)
@@ -170,7 +170,7 @@ func tick(dt: float) -> void:
 			_timer -= dt
 			if _timer <= 0.0:
 				_state = State.AWAKE
-				Log.ev("睡眠", "%s 完全清醒" % creature.tag())
+				Log.ev(Log.CAT_SLEEP, "%s 完全清醒" % creature.tag())
 		_:
 			pass
 
@@ -230,7 +230,7 @@ func start() -> bool:
 	_wake_reason = ""
 	_wake_kind = Wake.NONE
 	_snapshot_nearby()          # 记下"身边已经是谁" —— 他们之后怎么动都不吵醒我
-	Log.ev("睡眠", "%s 躺下准备睡（疲劳 %.0f%%）" % [creature.tag(), fatigue_ratio() * 100.0])
+	Log.ev(Log.CAT_SLEEP, "%s 躺下准备睡（疲劳 %.0f%%）" % [creature.tag(), fatigue_ratio() * 100.0])
 	return true
 
 ## 现在**睡得着**吗：没在睡，且还没睡够（疲劳 < `WAKE_FATIGUE_RATIO`）。
@@ -277,7 +277,7 @@ func _wake(reason: String, kind: Wake, next: State) -> void:
 	_wake_reason = reason
 	_wake_kind = kind
 	_known_nearby.clear()       # 醒了就不再有"背景名单"，下次躺下重新快照
-	Log.ev("睡眠", "%s 醒了（%s），已睡 %.0f 游戏分" % [creature.tag(), reason, _slept])
+	Log.ev(Log.CAT_SLEEP, "%s 醒了（%s），已睡 %.0f 游戏分" % [creature.tag(), reason, _slept])
 	_slept = 0.0
 
 ## 按 `RECOVER_PER_MIN` 回疲劳。走 `Needs.restore()` —— 与吃/喝/取暖同一个入口。
@@ -351,5 +351,5 @@ func fatigue_ratio() -> float:
 	var n := needs.need_by_id(FATIGUE_ID)
 	return n.ratio() if n != null else 1.0
 
-## 用哪条需求当「疲劳」。与 `Needs.FATIGUE_ID` / `Brain.FATIGUE_ID` 同字面量。
-const FATIGUE_ID := "fatigue"
+## 用哪条需求当「疲劳」。字面量收敛到 `NeedIds.FATIGUE`（唯一事实来源）。
+const FATIGUE_ID := NeedIds.FATIGUE

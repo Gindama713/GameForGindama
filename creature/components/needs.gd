@@ -10,7 +10,7 @@ extends CreatureComponent
 ## 疲劳对移动速度的最大拖累（占位）：累到 0 → 只剩 55% 速度；精神饱满 → 1.0。
 ## ⚠ 本系数是**全物种统一**的：`Creature.locomotion_speed()` 聚合协议 6，AI(PlayerBrain/Brain)
 ##   都读同一个聚合值 —— 疲劳的减速在这里定义一次，两种大脑都受益（2026-09-20 统一，见 brain.gd）。
-const FATIGUE_ID := "fatigue"
+const FATIGUE_ID := NeedIds.FATIGUE
 const FATIGUE_SLOW := 0.55
 
 var needs: Array[Need] = []
@@ -100,7 +100,7 @@ func drain(id: String, amount: float, reason: String = "") -> bool:
 	if not reason.is_empty():
 		notes.append(reason)
 	var tail := "" if notes.is_empty() else "（%s）" % "，".join(notes)
-	Log.ev("需求", "%s %s 见底%s" % [creature.tag(), n.def.label, tail])
+	Log.ev(Log.CAT_NEED, "%s %s 见底%s" % [creature.tag(), n.def.label, tail])
 	return true
 
 ## 恢复某项需求（将来的「吃 / 喝 / 取暖 / 睡觉」都调这个）。
