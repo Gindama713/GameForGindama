@@ -10,7 +10,11 @@ extends Control
 ##
 ## 【只读】Lineage / FamilyRegistry / Aging；不持业务状态。
 
-const PIG_TEX: Texture2D = preload("res://creature/pig/art/pig.png")
+## 【2026-09-22 删掉 `PIG_TEX`】此前这里 `preload("res://creature/pig/art/pig.png")` 当兜底图标 ——
+##   在一个**通用** UI 里写死了一个物种。症状项目自己早就记着（见 `_draw()` 里那条注释：
+##   "主角（人）在族谱里'还是一头猪'"）。修法不是换一张更中性的图，而是**回退到色块**：
+##   主画面 `Creature._draw()` 对"没配贴图的生物"本来就是画 `def.map_color` 色块（§6.8），
+##   族谱与它用同一口径即可 —— 于是**任何物种都不需要在这里被认识**（§6.5「UI 不认识物种」）。
 const NODE := 56.0
 const GAP := 22.0
 const ROW_H := 108.0
@@ -131,9 +135,10 @@ func _resolve(id: int) -> Dictionary:
 		"sex": rec["sex"], "size": 1.0,
 		"mother_id": rec["mother_id"], "father_id": rec["father_id"],
 		"children_ids": rec["children_ids"],
-		# 已故者用出生时留在 FamilyRegistry 的那份快照（见 unregister()）——
-		# 没有它，已故主角也会被画成猪。缺失时回退到猪图（旧行为，至少不崩）。
-		"texture": (rec.get("texture") if rec.get("texture") != null else PIG_TEX),
+			# 已故者用出生时留在 FamilyRegistry 的那份快照（见 unregister()）——
+			# 没有它，已故主角也会被画成猪。
+			# **取不到就是 `null`**（不再回退到猪图）—— 由 `_draw` 画 `color` 色块。
+			"texture": rec.get("texture"),
 		"color": rec.get("color", COL_TEXT),
 	}
 
@@ -326,12 +331,16 @@ func _draw() -> void:
 		var aw := NODE * 0.86 * clampf(s, 0.2, 1.0)
 		var ar := Rect2(r.position + (Vector2(NODE, NODE) - Vector2(aw, aw)) * 0.5, Vector2(aw, aw))
 		var tint: Color = COL_TEXT if n["alive"] else COL_DEAD
-		# **按节点自己的物种贴图**（2026-09-20 修）—— 此前这里硬编码 PIG_TEX，
-		# 于是主角（人）在族谱里被画成猪。取不到图（纯逻辑生物）才回退到猪图。
+		# **按节点自己的物种贴图**（2026-09-20 修）—— 此前这里硬编码猪图，
+		# 于是主角（人）在族谱里被画成猪。
+		# 取不到图（纯逻辑物种 / 已故且快照无图）→ 画**色块**，与主画面 `Creature._draw()`
+		# 同一口径。⚠ **不再回退到任何具体物种的图**（2026-09-22 删掉 `PIG_TEX`）——
+		# 那是在通用 UI 里写死一个物种（§6.5「UI 不认识物种」）。
 		# ⚠ Dictionary 取出的是 Variant → 显式标类型（§2.4 坑 7）。
 		var tex: Texture2D = n.get("texture")
-		if tex == null:
-			tex = PIG_TEX
-		draw_texture_rect(tex, ar, false, tint)
+		if tex != null:
+			draw_texture_rect(tex, ar, false, tint)
+		else:
+			draw_rect(ar, n.get("color", COL_TEXT))
 		draw_string(ThemeDB.fallback_font, Vector2(r.position.x - 8, r.end.y + 16), n["label"], HORIZONTAL_ALIGNMENT_LEFT, NODE + 16, 12, COL_TEXT)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

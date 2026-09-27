@@ -13,7 +13,7 @@ extends Control
 ##
 ## 【为什么全身照与部位按钮要"叠"在一起】用户要的是"点身上的手/头/腿" ——
 ##   所以部位按钮是**透明热区**，按解剖位置覆盖在全身照上，
-##   而不是排成一列按钮（那样就不是"点身上"了）。热区位置来自 PART_LAYOUT。
+##   而不是排成一列按钮（那样就不是"点身上"了）。热区位置来自 LAYOUT.part_layout。
 ##
 ## 【动画全部走 Tween】项目里首次使用 Tween。要点：
 ##   - **不要每帧 set_position**（那会和 Tween 打架）→ 只在开/关时 create_tween；
@@ -36,101 +36,19 @@ const BAR_DAMP := 12.0            # 数值条阻尼（越大越跟手）
 ## 全身照显示高度（面板内）。person.png 是 512×512，等比缩到这么高。
 const PORTRAIT_H := 300.0
 
-## 部位热区布局：部位 id → 归一化矩形（x, y, w, h，相对全身照显示框 0..1）。
-## **这是"美术知识"，不是"生物知识"** —— 即"这个物种的图里，头/手/腿画在哪个位置"。
-## 所以它按物种配（放这里因为目前只有人形主角一例；将来多物种再抽成 def 字段）。
+## 部位热区 / 特写 / 轮廓的**版式数据** —— 见 `ui/body_diagram_def.gd` 与 `body_diagram_player.tres`。
 ##
-## 【2026-09-20 重算（问题4：框不贴合）】
-##   ⚠ 旧值（head 0.40/0.01/0.20/0.17 等）是**目测拍的**，误差很大 —— 头框只到 y0.18，
-##     而实测头一直画到 y0.30；腿框宽只有 0.10，实际两条腿合起来占 0.22。
-##   现在**不再目测**：用脚本逐行扫描 `person.png` 的墨迹（alpha≥100 的白色线稿像素），
-##   量出真实剪影，再按解剖分界换算成归一化坐标。依据（原图 512×512 像素）：
-##     头部      y 23..152，最宽处 x 230..283（y=80）—— 肩线在 y=153 明显变宽
-##     躯干(含臂) y 153..327，最宽 x 158..353（y≥293）—— 是件"下摆张开的袍身"
-##     腿        y 328..488，x 201..312（y=328 处宽度从 196 骤降到 112）
-##   ⚠ **这张图是"填充剪影"不是"线稿"**：没有手指缝、两腿之间也没有空隙（实测每行只有 1 段墨迹），
-##     所以"左臂/右臂""左腿/右腿"是**按中轴 0.5 左右均分**的，不是按"两条独立的肢体"切 ——
-##     图上它们本来就分不开。这是**素材的客观限制**，不是实现偷懒（详见 §5.9 素材台账）。
-## 【2026-09-20 三改（问题2：左手右手之间要有躯干）】
-##   旧值把 `arm_l` 取 0.309~0.500、`arm_r` 取 0.500~0.691 —— **两臂首尾相接**，
-##   中间根本没有"躯干"这一区（胸腔虽然是 0.309~0.692 宽度，却和两臂完全重叠）。
-##   用户要的是"左手和右手中间看得见一个躯干"，所以改成**内中外三段**：
-##     中间芯 x0.391~0.609 = 躯干（胸腔）
-##     左外带 x0.309~0.391 = 左臂
-##     右外带 x0.609~0.691 = 右臂
-##   ⇒ 臂是袍身的**外侧边band**，躯干是**中间芯**，三者互不重叠、并起来正好等于袍身全宽。
-##   ⚠ 依据仍是实测（原图 512×512）：躯干最宽 x158..353（归一 0.309~0.690）。
-##     这张图没有手臂缝（每行只有 1 段墨迹），所以"外侧 band = 臂"是**合理的近似**，
-##     不是精确解剖 —— 但比"两臂对半分、中间没有躯干"更符合用户的直觉与点击预期。
-const PART_LAYOUT := {
-	"head":     Rect2(0.398, 0.041, 0.203, 0.264),   # 头 y0.041~0.305（实测 23..152，最宽 x206..304）
-	"ribcage":  Rect2(0.391, 0.305, 0.219, 0.336),   # 躯干（**中间芯**）y0.305~0.641（实测 153..327）
-	"arm_l":    Rect2(0.309, 0.312, 0.082, 0.326),   # 左臂（袍身**左外侧带**）
-	"arm_r":    Rect2(0.609, 0.312, 0.082, 0.326),   # 右臂（袍身**右外侧带**）
-	"leg_l":    Rect2(0.393, 0.641, 0.107, 0.314),   # 左腿 y0.641~0.955（实测 328..488）
-	"leg_r":    Rect2(0.500, 0.641, 0.111, 0.314),   # 右腿
-}
-
-## 人体**轮廓多边形**（归一化坐标，相对全身照显示框）—— 问题4 的"轮廓描边可视化"。
+## 【为什么在数据文件里、而不写在这里】这五块数据（热区矩形 / 特写贴图 / 翻转表 / 立绘 / 轮廓）
+##   原本是写死在本文件的常量，约 90 行。三个后果：
+##     ① 换立绘、加部位、加物种都要改 **UI 代码** —— 而它们全是数据；
+##     ② 本文件里出现 7 条 `res://` 硬编码路径；
+##     ③ 「部位清单」在 `creature/player/data/part_*.tres` 里**已经有一份** ⇒ 同值复制。
+##   ⇒ 2026-09-22 抽成 `.tres`（§6.4 数据纪律）。
 ##
-## 【怎么来的】同样是脚本逐行扫描墨迹：取每 12px 一行的"最左/最右墨迹点"，
-##   左边界自上而下、右边界自下而上，首尾相接成一条闭合轮廓。78 个点。
-## 【为什么要它】用户要"检测框更贴合人体"。光把 6 个矩形调准还不够直观 ——
-##   这条实测轮廓就是**人体的真实边界**，把热区叠在它上面，一眼能看出贴不贴合；
-##   也让"框内的肢体到底有没有覆盖到"变成可视的（而不是只能靠猜）。
-## 【为什么画在全身照之上而非替换全身照】轮廓是"辅助线"，不该盖掉美术本身：
-##   用半透明的细线描边，既能校准视觉，又不喧宾夺主。
-## 【注意：这里用 `var` 而不是 `const`】GDScript 的常量表达式求值器**不接受
-##   `PackedVector2Array([...])` 这种构造调用**（实测报 "isn't a constant expression"）。
-##   反正它是只读用途，用 `var` + 命名约定（全大写）即可，语义不变。
-var SILHOUETTE := PackedVector2Array([
-	Vector2(0.4805, 0.0449), Vector2(0.4414, 0.0684), Vector2(0.4238, 0.0918),
-	Vector2(0.4121, 0.1152), Vector2(0.4062, 0.1387), Vector2(0.4023, 0.1621),
-	Vector2(0.4023, 0.1855), Vector2(0.4062, 0.2090), Vector2(0.4141, 0.2324),
-	Vector2(0.4258, 0.2559), Vector2(0.4453, 0.2793), Vector2(0.4199, 0.3027),
-	Vector2(0.3770, 0.3262), Vector2(0.3574, 0.3496), Vector2(0.3457, 0.3730),
-	Vector2(0.3359, 0.3965), Vector2(0.3301, 0.4199), Vector2(0.3242, 0.4434),
-	Vector2(0.3203, 0.4668), Vector2(0.3164, 0.4902), Vector2(0.3145, 0.5137),
-	Vector2(0.3105, 0.5371), Vector2(0.3105, 0.5605), Vector2(0.3086, 0.5840),
-	Vector2(0.3086, 0.6074), Vector2(0.3086, 0.6309), Vector2(0.3926, 0.6543),
-	Vector2(0.3945, 0.6777), Vector2(0.3965, 0.7012), Vector2(0.3984, 0.7246),
-	Vector2(0.4004, 0.7480), Vector2(0.4023, 0.7715), Vector2(0.4043, 0.7949),
-	Vector2(0.4043, 0.8184), Vector2(0.4062, 0.8418), Vector2(0.4082, 0.8652),
-	Vector2(0.4102, 0.8887), Vector2(0.4121, 0.9121), Vector2(0.4141, 0.9355),
-	Vector2(0.5918, 0.9355), Vector2(0.5938, 0.9121), Vector2(0.5957, 0.8887),
-	Vector2(0.5977, 0.8652), Vector2(0.5996, 0.8418), Vector2(0.5996, 0.8184),
-	Vector2(0.6016, 0.7949), Vector2(0.6035, 0.7715), Vector2(0.6055, 0.7480),
-	Vector2(0.6074, 0.7246), Vector2(0.6074, 0.7012), Vector2(0.6094, 0.6777),
-	Vector2(0.6113, 0.6543), Vector2(0.6914, 0.6309), Vector2(0.6914, 0.6074),
-	Vector2(0.6914, 0.5840), Vector2(0.6914, 0.5605), Vector2(0.6895, 0.5371),
-	Vector2(0.6895, 0.5137), Vector2(0.6875, 0.4902), Vector2(0.6836, 0.4668),
-	Vector2(0.6797, 0.4434), Vector2(0.6758, 0.4199), Vector2(0.6699, 0.3965),
-	Vector2(0.6602, 0.3730), Vector2(0.6484, 0.3496), Vector2(0.6309, 0.3262),
-	Vector2(0.5898, 0.3027), Vector2(0.5547, 0.2793), Vector2(0.5723, 0.2559),
-	Vector2(0.5840, 0.2324), Vector2(0.5918, 0.2090), Vector2(0.5957, 0.1855),
-	Vector2(0.5957, 0.1621), Vector2(0.5918, 0.1387), Vector2(0.5859, 0.1152),
-	Vector2(0.5742, 0.0918), Vector2(0.5566, 0.0684), Vector2(0.5117, 0.0449),
-])
-
-## 部位 id → 特写贴图。**未列出的部位不回退到全身照**（宁可显示"无特写"也不要误导）。
-##
-## 【为什么左右共用一张】现有素材（`arm.png` / `leg.png`）都是**单张居中的身体部件插画**，
-##   不是左右成对的图。所以左右臂都指向同一张、左右腿也指向同一张 —— **不做水平翻转**
-##   （翻转会让同一条手/腿看起来方向相反，反而像画错了）。
-##   将来若要左右分明（比如伤口在左手），再给 `arm_l` / `arm_r` 各配一张。
-const PART_TEXTURE := {
-	"head": "res://creature/player/art/brain.png",      # 头（素材即头像/brain 插画）
-	"ribcage": "res://creature/player/art/ribcage.png", # 胸腔
-	"arm_l": "res://creature/player/art/arm.png",       # 左臂
-	"arm_r": "res://creature/player/art/arm.png",       # 右臂（共用 arm.png）
-	"leg_l": "res://creature/player/art/leg.png",       # 左腿
-	"leg_r": "res://creature/player/art/leg.png",       # 右腿（共用 leg.png）
-}
-## 需要水平翻转的部位。**目前为空**：素材是单张居中的部件图，左右同源、无需镜像
-##   （见 PART_TEXTURE 上方说明）。留着这个字典是为了"将来左右各配一张"时有地方写。
-const PART_FLIP := {}
-
-const PORTRAIT_TEX: Texture2D = preload("res://creature/player/art/person.png")
+## ⚠ **每块数据的实测依据也一起搬过去了** —— `.tres` 存不住注释，所以把它们变成了字段：
+##   `part_note`（每个矩形的实测像素依据）/ `source_note`（整块版式是怎么量出来的，
+##   含「素材是填充剪影、没有手指缝」这条客观限制）。**改版式之前先读 `source_note`。**
+const LAYOUT: BodyDiagramDef = preload("res://ui/body_diagram_player.tres")
 
 const ALIVE := Color(0.82, 0.82, 0.82)
 const DIM := Color(0.42, 0.42, 0.42)
@@ -338,7 +256,7 @@ func _build() -> void:
 	portrait_wrap.add_child(_portrait_box)
 
 	_portrait = TextureRect.new()
-	_portrait.texture = PORTRAIT_TEX
+	_portrait.texture = LAYOUT.portrait
 	_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -396,7 +314,7 @@ func _build() -> void:
 	_detail_lbl = _label("", FONT_SIZE)
 	drow.add_child(_detail_lbl)
 
-## 按 PART_LAYOUT 建热区（叠在全身照上）。
+## 按 LAYOUT.part_layout 建热区（叠在全身照上）。
 ##
 ## 【每格两层】
 ##   ① `ColorRect` 伤势色块 —— **这就是"受伤时身体会变色"**：色块按部位形状铺在全身照对应位置，
@@ -405,8 +323,8 @@ func _build() -> void:
 ## 为什么不合成一个控件：色块要**纯色填充**、按钮要**吃点击**，两者职责不同；
 ##   分开后"高亮变色"与"伤势变色"互不干扰（按钮 modulate 只管选中，色块只管伤势）。
 func _build_hit_rects() -> void:
-	for pid in PART_LAYOUT.keys():
-		var r: Rect2 = PART_LAYOUT[pid]
+	for pid in LAYOUT.part_layout.keys():
+		var r: Rect2 = LAYOUT.part_layout[pid]
 		var al: float = r.position.x
 		var at: float = r.position.y
 		var ar: float = r.position.x + r.size.x
@@ -436,7 +354,7 @@ func _build_hit_rects() -> void:
 ## 画人体轮廓 + 六个热区的边框（问题4 的"轮廓描边可视化"）。
 ##
 ## 【画什么】
-##   ① 实测剪影轮廓（SILHOUETTE，青色半透明闭合线）—— 人体的真实边界；
+##   ① 实测剪影轮廓（LAYOUT.silhouette，青色半透明闭合线）—— 人体的真实边界；
 ##   ② 六个热区边框（选中=亮白、未选中=暗灰虚线感）—— 一眼看出框有没有包住肢体。
 ## 这样"框贴不贴合"是**看得见的**，而不是只能靠运行起来点一点试试。
 func _draw_outline() -> void:
@@ -447,13 +365,13 @@ func _draw_outline() -> void:
 		return
 	# ① 剪影轮廓
 	var pts := PackedVector2Array()
-	for p in SILHOUETTE:
+	for p in LAYOUT.silhouette:
 		pts.append(Vector2(p.x * s.x, p.y * s.y))
 	pts.append(pts[0])                     # 闭合
 	_outline.draw_polyline(pts, OUTLINE_COL, 1.5, true)
 	# ② 热区边框
-	for pid in PART_LAYOUT.keys():
-		var r: Rect2 = PART_LAYOUT[pid]
+	for pid in LAYOUT.part_layout.keys():
+		var r: Rect2 = LAYOUT.part_layout[pid]
 		var rect := Rect2(r.position.x * s.x, r.position.y * s.y,
 			r.size.x * s.x, r.size.y * s.y)
 		var sel: bool = (pid == _selected)
@@ -624,10 +542,12 @@ func _refresh_detail(animated: bool) -> void:
 	var apply := func() -> void:
 		_detail_title.text = "%s · %s" % [part.def.label, part.severity_text()]
 		_detail_title.add_theme_color_override("font_color", _severity_color(part))
-		var path: String = PART_TEXTURE.get(_selected, "")
-		_detail_tex.texture = load(path) if not path.is_empty() else null
-		# 左右镜像（左臂/左腿共用右侧那张素材 —— 目前 PART_FLIP 为空，见其说明）
-		_detail_tex.flip_h = PART_FLIP.get(_selected, false)
+		# 特写贴图**直接取**（数据里存的就是 `Texture2D`，不用再 `load(path)`）——
+		# 走 schema 的访问器，UI 不直接碰字典（2026-09-22 数据化时改）。
+		# 「未列出的部位不回退到全身照」由 `texture_of()` 的语义保证（返回 null）。
+		_detail_tex.texture = LAYOUT.texture_of(_selected)
+		# 左右镜像（左臂/左腿共用右侧那张素材 —— 目前 `part_flip` 为空，见其说明）
+		_detail_tex.flip_h = LAYOUT.flip_of(_selected)
 		# 特写图也按伤势染色 —— 与全身照上的色块同一把尺子
 		_detail_tex.self_modulate = _severity_color(part)
 		_detail_section.visible = true
