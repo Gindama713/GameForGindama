@@ -55,7 +55,7 @@ func day() -> int:
 ##   典型的同值复制：`MINUTES_PER_DAY` 改了它们不会跟着变，
 ##   而且没人知道还有谁在用这个数（隐式耦合）。
 ##   ⇒ 换算只此一处，别处一律调它。
-static func minutes_to_days(minutes: float) -> float:
+func minutes_to_days(minutes: float) -> float:
 	return minutes / float(MINUTES_PER_DAY)
 
 ## 当天已过的游戏分钟（0 .. 1439.x）

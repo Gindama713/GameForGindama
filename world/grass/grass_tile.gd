@@ -7,7 +7,10 @@ var def: GrassDef
 var coord: Vector2i
 var durability: int            # 当前耐久 0..def.max_bites；归 0 = 被吃秃
 
+# 累加器由拥有本状态的 GrassField 推进。
+@warning_ignore("unused_private_class_variable")
 var _recover_acc: float = 0.0  # 再生计时累加（游戏分）
+@warning_ignore("unused_private_class_variable")
 var _spread_acc: float = 0.0   # 扩散计时累加（游戏分）
 
 func _init(p_def: GrassDef, p_coord: Vector2i, p_durability: int) -> void:

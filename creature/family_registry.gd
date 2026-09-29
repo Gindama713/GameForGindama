@@ -1,10 +1,10 @@
 extends Node
-## 家族注册表（Autoload）—— 全局 `id → 活体 Creature` 映射 + 种群计数。
+## 家族注册表（Autoload）—— 全局 `id → Creature` 映射 + 种群计数。
 ##
 ## 为什么需要：Lineage 只存 int id（父母/子女），要解析成活体得有个全局表；
 ##   组件之间不互相持有引用（§6.5 解耦），统一来这里查。
-## 生命周期：Creature._ready 注册自己、NOTIFICATION_PREDELETE 注销 → 死/清屏自动摘除，
-##   于是"已故亲人"解析为 null（族谱显示已故），不会野指针。
+## 生命周期：Creature._ready 注册自己、NOTIFICATION_PREDELETE 注销。
+##   死后到尸体清理前仍可通过 id 找到节点；living_count 只计活体。
 ## 保持薄：只做登记/查询/计数，不碰任何业务规则。
 
 var _by_id: Dictionary = {}    # int -> Creature（活体）
@@ -57,9 +57,14 @@ func get_record(id: int) -> Dictionary:
 func knows(id: int) -> bool:
 	return _by_id.has(id) or _archive.has(id)
 
-## 当前活体总数（繁殖软上限用）。
-func living_count() -> int:
-	return _by_id.size()
+## 当前活体数；指定定义时只统计该物种，尸体仍留在册但不计入。
+func living_count(def: CreatureDef = null) -> int:
+	var count := 0
+	for item in _by_id.values():
+		var c := item as Creature
+		if c != null and c.is_alive() and (def == null or c.def == def):
+			count += 1
+	return count
 
 func debug_state() -> String:
 	return "在册 %d" % _by_id.size()

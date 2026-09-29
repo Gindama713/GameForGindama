@@ -132,8 +132,7 @@ func _nearest_bank() -> Vector2i:
 				continue                     # 比两个已知最优都远（或超半径）-> 连地形都不用查
 			if not GridManager.in_bounds(c.x, c.y):
 				continue
-			var cell := GridManager.cell_at(c.x, c.y)
-			if cell == null or not Terrain.walkable(cell.terrain):
+			if not GridManager.is_walkable(c):
 				continue
 			if dist < best_any_d:
 				best_any_d = dist
@@ -141,7 +140,7 @@ func _nearest_bank() -> Vector2i:
 			# 【为什么优先挑空格】只按"几何最近"挑岸格时，若最近那格正被别的猪站着，
 			#   本猪永远走不进去 -> 每次决策都朝同一格撞、原地打转（实测渴死就是这么来的）。
 			#   被占的格下一帧可能空出来，所以只是"优先"，不是硬性要求。
-			if (cell.content == null or cell.content == creature) and dist < best_free_d:
+			if GridManager.can_enter(c, creature) and dist < best_free_d:
 				best_free_d = dist
 				best_free = c
 	return best_free if best_free.x >= 0 else best_any

@@ -32,7 +32,7 @@ extends Node
 ##     这是本文件仅剩的一处对外知识，且它指的是**数据位置**、不是**代码类型**。
 ##     改目录布局时**必须同步改这里**（这也是它被写在文件顶部的原因）。
 
-const SCAN_ROOTS: Array[String] = ["res://creature", "res://world/grass", "res://world/grassland", "res://world/lake"]
+const SCAN_ROOTS: Array[String] = ["res://creature", "res://world", "res://items"]
 
 func _ready() -> void:
 	validate_all()

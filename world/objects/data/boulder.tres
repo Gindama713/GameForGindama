@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="WorldObjectDef" format=3]
+
+[ext_resource type="Script" path="res://world/objects/world_object_def.gd" id="1"]
+[ext_resource type="Texture2D" path="res://world/objects/art/rock.png" id="2"]
+
+[sub_resource type="FastNoiseLite" id="Noise"]
+noise_type = 1
+frequency = 0.09
+fractal_octaves = 3
+
+[sub_resource type="Curve" id="RegionDensity"]
+_data = [Vector2(0, 1), 0.0, -0.500000, 1, 1, Vector2(0.4, 0.8), -0.500000, -1.666667, 1, 1, Vector2(0.7, 0.3), -1.666667, -0.333333, 1, 1, Vector2(1, 0.2), -0.333333, 0.0, 1, 1]
+point_count = 4
+
+[resource]
+script = ExtResource("1")
+id = &"boulder"
+display_name = "岩石"
+texture = ExtResource("2")
+rotation_degrees = -45.0
+height_cells = 1.0
+blocks_movement = true
+max_integrity = 80
+terrain_weights = {&"unknown": 1.0, &"grass": 0.15}
+region_density = SubResource("RegionDensity")
+density = 0.025
+patch_noise = SubResource("Noise")
+patch_threshold = 0.2
+spacing_cells = 1.5
+land_margin_cells = 1

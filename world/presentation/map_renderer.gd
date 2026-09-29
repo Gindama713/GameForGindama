@@ -13,7 +13,7 @@ extends Node2D
 ##
 ##   而**地形是静态的** —— 一局里只在 `terrain_changed` 时变（开局一次）。于是拆开：
 ##     · **本文件**：只画地形，只订阅 `terrain_changed`
-##     · **`world/grass_layer.gd`**：只画有活草的格，订阅 `grass_changed`，
+##     · **`world/presentation/grass_layer.gd`**：只画有活草的格，订阅 `grass_changed`，
 ##       而且**只遍历草格表**（开局几百格）而不是全图
 ##   ⇒ 这才是 `EventBus.grass_changed` 注释里"供表现层**局部**重画"那句话的落地。
 ##     （在此之前，信号带了格坐标，唯一的接收方却丢掉坐标做全量重绘 —— 契约与实现不一致。）

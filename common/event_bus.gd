@@ -1,5 +1,8 @@
 extends Node
 
+# 信号由外部系统发射、订阅；本节点只声明契约。
+@warning_ignore_start("unused_signal")
+
 ## 全局事件总线：系统 / UI 间解耦的信号中转。
 ## 连接不持引用，发射方 / 接收方释放后连接自动断（Godot 信号机制）。
 ## 点击猪 -> 发出 creature_clicked -> 检视面板接收，互不持有引用。

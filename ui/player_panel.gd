@@ -378,10 +378,10 @@ func _draw_outline() -> void:
 		var col := Color(1, 1, 1, 0.85) if sel else Color(0.6, 0.6, 0.6, 0.35)
 		_outline.draw_rect(rect, col, false, 1.0)
 
-func _label(text: String, size: int) -> Label:
+func _label(text: String, font_size: int) -> Label:
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", size)   # 父主题不继承，必须逐控件设
+	l.add_theme_font_size_override("font_size", font_size)   # 父主题不继承，必须逐控件设
 	return l
 
 # ---------------- 拖拽（问题3） ----------------

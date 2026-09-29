@@ -57,6 +57,7 @@ const GROUP_PLAYER := Groups.PLAYER
 
 ## 相机（跟随主角）。场景里是 Camera2D + camera_rig.gd。
 @onready var _camera: Camera2D = $Camera2D
+@onready var _objects: WorldObjectField = $WorldObjects
 
 ## 主角引用（全场唯一）。未生成 / 已释放时为 null。
 ## 【放这里而不是放 Creature】"谁在扮演玩家"是**编排层的知识**，不是生物自身的属性 ——
@@ -64,6 +65,8 @@ const GROUP_PLAYER := Groups.PLAYER
 var player: Creature = null
 
 func _ready() -> void:
+	var interaction: WorldObjectInteraction = _objects.get_node("Interaction") as WorldObjectInteraction
+	interaction.action_failed.connect($UI/SensationFeed._on_action_failed)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = WorldSeed.value ^ SPAWN_RNG_SALT
 
@@ -85,6 +88,7 @@ func _ready() -> void:
 	EventBus.shorelines_changed.emit(lake["samplers"], LAKE_DEF.edge_width_px, LAKE_DEF.edge_color)
 	# 1b) 草场播种：把刚画出的 grass/tall_grass 格建成"满耐久活草"，之后由 GrassField 自己推进再生/扩散
 	GrassField.seed_existing(GridManager.grid)
+	_objects.generate(WorldSeed.value)
 	print("[草场] 播种活草 %d 格（成熟 %d 格）" % [GrassField.count(), GrassField.count_mature()])
 
 	print("=== 网格就绪（逻辑层）===")
@@ -146,7 +150,7 @@ func _ready() -> void:
 ##   3) 只落 `walkable && 非水 && content==null` 的格（与 `_pick_free_near` 同判据）。
 ##   ⚠ 与猪的落位**共用同一颗 rng**：谁先生成会改变后续抽样 —— 主角固定排在所有家庭之后，
 ##     所以"改了主角"不会移动猪圈（顺序即契约）。
-func _spawn_player(g_centers: Array, g_reaches: Array, g_majors: Array,
+func _spawn_player(g_centers: Array, _g_reaches: Array, g_majors: Array,
 		lake_ang: Array[float], has_lake: Array[bool],
 		rng: RandomNumberGenerator) -> Creature:
 	if g_centers.is_empty():
@@ -231,22 +235,23 @@ func _player_spawn_cell(center: Vector2, ang: float, ring_in: int,
 		var c := Vector2i(int(round(center.x + cos(a) * d)), int(round(center.y + sin(a) * d)))
 		if not GridManager.in_bounds(c.x, c.y):
 			continue
-		var cell := GridManager.cell_at(c.x, c.y)
-		if cell != null and cell.content == null \
-				and Terrain.walkable(cell.terrain) and cell.terrain != Terrain.WATER:
+		if GridManager.can_enter(c):
 			return c
 	return Vector2i(-1, -1)
 
-func _spawn_pig(at: Vector2i) -> Creature:
-	var pig: Creature = PIG_SCENE.instantiate()
-	pig.coord = at            # 必须在 add_child 前设好，_ready 才会落对格
-	_creatures.add_child(pig)
+func _spawn_creature(scene: PackedScene, at: Vector2i) -> Creature:
+	var creature := scene.instantiate() as Creature
+	if creature == null:
+		push_error("[生成] 场景根节点不是 Creature：%s" % scene.resource_path)
+		return null
+	creature.coord = at       # 必须在 add_child 前设好，_ready 才会落对格
+	_creatures.add_child(creature)
 	# 定义校验没过 / 坐标不可用 -> Creature 会拒绝生成（queue_free）。
 	# 这时不能把失效引用交出去，否则调用方一碰就 "previously freed"。
-	if pig.is_queued_for_deletion():
+	if creature.is_queued_for_deletion():
 		return null
-	EventBus.creature_spawned.emit(pig)   # 表现层（小地图等）订阅；生成即广播
-	return pig
+	EventBus.creature_spawned.emit(creature)
+	return creature
 
 ## 繁殖请求入口：Reproduction 判定"可育母+相邻可育公+营养+冷却"后发信号，这里执行。
 func _on_birth_requested(mother: Node, father: Node) -> void:
@@ -257,41 +262,50 @@ func _on_birth_requested(mother: Node, father: Node) -> void:
 	_spawn_offspring(m, f)
 
 ## 真造娃：落母亲相邻空格 + 登记双亲 + 遗传（性格/寿命）。
-func _spawn_offspring(mother: Creature, father: Creature) -> void:
-	# 种群软上限（防指数爆炸）
-	var life: LifeDef = mother.def.life if mother.def != null else null
-	if life != null and FamilyRegistry.living_count() >= life.max_population:
-		return
-	var at := _free_adjacent(mother.coord)
-	if at.x < 0:
-		return
-	var child := _spawn_pig(at)
-	if child == null:
-		return
-	# 亲缘登记
-	var cl: Lineage = child.get_component(Lineage) as Lineage
+func _spawn_offspring(mother: Creature, father: Creature) -> int:
+	if not mother.is_alive() or not father.is_alive() or mother.def == null or mother.def != father.def:
+		return 0
+	var life: LifeDef = mother.def.life
+	if life == null or mother.scene_file_path.is_empty():
+		return 0
+	var scene := load(mother.scene_file_path) as PackedScene
+	if scene == null:
+		push_error("[繁殖] 无法加载母体场景：%s" % mother.scene_file_path)
+		return 0
 	var ml: Lineage = mother.get_component(Lineage) as Lineage
 	var fl: Lineage = father.get_component(Lineage) as Lineage
-	if cl != null:
-		if ml != null:
-			cl.mother_id = mother.id
-			ml.add_child_id(child.id)
-		if fl != null:
-			cl.father_id = father.id
-			fl.add_child_id(child.id)
-	# 遗传：性格 = 父母均值±抖动；寿命 = 父母均值×个体方差
-	var cp: Personality = child.get_component(Personality) as Personality
 	var mp: Personality = mother.get_component(Personality) as Personality
 	var fp: Personality = father.get_component(Personality) as Personality
-	if cp != null:
-		cp.inherit(mp, fp)
-	var ca: Aging = child.get_component(Aging) as Aging
 	var ma: Aging = mother.get_component(Aging) as Aging
 	var fa: Aging = father.get_component(Aging) as Aging
-	if ca != null and ma != null and fa != null and life != null:
-		var mean_life := (ma.lifespan_min + fa.lifespan_min) * 0.5
-		ca.lifespan_min = mean_life * child.rng.randf_range(1.0 - life.variance, 1.0 + life.variance)
-	Log.ev(Log.CAT_SPAWN, "%s 出生（母#%d 父#%d）@%s" % [child.tag(), mother.id, father.id, at])
+	var born := 0
+	for _i in mother.rng.randi_range(life.litter_min, life.litter_max):
+		if FamilyRegistry.living_count(mother.def) >= life.max_population:
+			break
+		var at := _free_adjacent(mother.coord)
+		if at.x < 0:
+			break
+		var child := _spawn_creature(scene, at)
+		if child == null:
+			break
+		var cl: Lineage = child.get_component(Lineage) as Lineage
+		if cl != null:
+			cl.mother_id = mother.id
+			cl.father_id = father.id
+			if ml != null:
+				ml.add_child_id(child.id)
+			if fl != null:
+				fl.add_child_id(child.id)
+		var cp: Personality = child.get_component(Personality) as Personality
+		if cp != null:
+			cp.inherit(mp, fp)
+		var ca: Aging = child.get_component(Aging) as Aging
+		if ca != null and ma != null and fa != null:
+			var mean_life := (ma.lifespan_min + fa.lifespan_min) * 0.5
+			ca.lifespan_min = mean_life * child.rng.randf_range(1.0 - life.variance, 1.0 + life.variance)
+		Log.ev(Log.CAT_SPAWN, "%s 出生（母#%d 父#%d）@%s" % [child.tag(), mother.id, father.id, at])
+		born += 1
+	return born
 
 ## 母亲周围找一个空且可踩的格（8 邻域）；没有返回 (-1,-1)。
 func _free_adjacent(center: Vector2i) -> Vector2i:
@@ -302,8 +316,7 @@ func _free_adjacent(center: Vector2i) -> Vector2i:
 			var c := center + Vector2i(dx, dy)
 			if not GridManager.in_bounds(c.x, c.y):
 				continue
-			var cell := GridManager.cell_at(c.x, c.y)
-			if cell != null and cell.content == null and Terrain.walkable(cell.terrain):
+			if GridManager.can_enter(c):
 				return c
 	return Vector2i(-1, -1)
 
@@ -315,8 +328,7 @@ func _pick_free_near(center: Vector2i, rmin: int, rmax: int, rng: RandomNumberGe
 		var c := center + Vector2i(int(round(cos(ang) * dist)), int(round(sin(ang) * dist)))
 		if not GridManager.in_bounds(c.x, c.y):
 			continue
-		var cell := GridManager.cell_at(c.x, c.y)
-		if cell != null and cell.content == null and Terrain.walkable(cell.terrain):
+		if GridManager.can_enter(c):
 			return c
 	return Vector2i(-1, -1)
 
@@ -337,7 +349,7 @@ func _spawn_family(center: Vector2i, grass_major: int, sector: int, sectors: int
 		f_at = _pick_free_near(center, ring_in, ring_out, rng)
 	if f_at.x < 0:
 		return
-	var father := _spawn_pig(f_at)
+	var father := _spawn_creature(PIG_SCENE, f_at)
 	if father == null:
 		return
 	var m_at := _free_adjacent(father.coord)
@@ -345,7 +357,7 @@ func _spawn_family(center: Vector2i, grass_major: int, sector: int, sectors: int
 		m_at = _pick_free_near(anchor, 0, 4, rng)
 	if m_at.x < 0:
 		return
-	var mother := _spawn_pig(m_at)
+	var mother := _spawn_creature(PIG_SCENE, m_at)
 	if mother == null:
 		return
 	var life: LifeDef = father.def.life
@@ -366,7 +378,7 @@ func _spawn_family(center: Vector2i, grass_major: int, sector: int, sectors: int
 			c_at = _pick_free_near(center, ring_in, ring_out, rng)
 		if c_at.x < 0:
 			continue
-		var child := _spawn_pig(c_at)
+		var child := _spawn_creature(PIG_SCENE, c_at)
 		if child == null:
 			continue
 		var cl: Lineage = child.get_component(Lineage) as Lineage

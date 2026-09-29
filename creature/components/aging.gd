@@ -44,8 +44,8 @@ func size_ratio() -> float:
 	var r := clampf(age_min / lifespan_min, 0.0, 1.0)
 	if r < life.mature_ratio:
 		# 幼崽期：从 size_baby 线性长到 1.0
-		var t := r / life.mature_ratio
-		return lerpf(life.size_baby, 1.0, t)
+		var growth: float = r / life.mature_ratio
+		return lerpf(life.size_baby, 1.0, growth)
 	if r < life.elder_ratio:
 		return 1.0
 	# 老年：1.0 → size_elder 线性微缩

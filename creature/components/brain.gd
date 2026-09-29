@@ -191,6 +191,8 @@ func setup(host: Node) -> void:
 	_flee_memory = 0.0
 	_want_sprint = false
 	_sprint_hold = 0.0
+
+func after_setup() -> void:
 	_reset_timer()
 
 func tick(dt: float) -> void:

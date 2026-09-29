@@ -40,16 +40,6 @@ extends CreatureComponent
 ##   ⇒ **每晚掉多少、白天就回多少** → 稳态在 40↔100 之间震荡，**永远不会冻死**。
 ##     这正是"非冬天独猪不死"的**算术保证**，不是靠调参碰运气。
 ##
-## ── 冬天怎么接（当前没有季节系统，所以留成**函数**而不是常量）──
-##   让 `_cold_multiplier()` 在冬天返回 **2.0**：
-##     独猪一夜掉 `600 × 0.1 × 2.0 = 120 > 100` → **冻死**；
-##     抱团（×0.20）只掉 `24` → 活着。
-##   ⇒ **"冬天必须抱团"的机制落点就在这里**，不需要再写第二条规则、也不动抱团代码。
-##   同理"下雨"：让白天也返回 > 1 即可 —— 用户那句"白天当然**不下雨的话**"留的就是这个口子。
-##   ⚠ 刻意**不做成常量** `WINTER_MULT := 1.0`：一个永远不参与计算的常量是死代码，
-##     而一个"当前恒 1.0、但写明接入点"的函数是**接缝**。这是本项目既有的做法
-##     （对照 `PlayerIntent.apply()` —— v1 直通，但接缝先立住）。
-
 ## 本组件的调试前缀（协议 3 的自述用）
 const TAG := "体温"
 
@@ -132,7 +122,7 @@ func tick(dt: float) -> void:
 	_refresh_huddle(dt)
 
 	if TimeSystem.is_night():
-		var loss := NIGHT_DRAIN_PER_SEC * _cold_multiplier() * _huddle_factor() * dt
+		var loss := NIGHT_DRAIN_PER_SEC * _huddle_factor() * dt
 		# 走 `Needs.drain()` 的**统一入口**（扣减 + 封底 + 见底日志只该有一处，见 needs.gd）。
 		# 从前这里直接读写 `Need._depleted_logged`（私有字段）—— 现在本组件不再碰它。
 		needs.drain(WARMTH_ID, loss, "冻僵了")
@@ -203,7 +193,7 @@ func debug_state() -> String:
 ## ⚠ 用**剩余**夜长而不是整夜 600 分：天已经过了一半就该报一半，
 ##   否则那个数字会在排查时误导人（"还剩 3 小时了却报整夜的量"）。
 func _night_drop_estimate() -> float:
-	return NIGHT_DRAIN_PER_SEC * _cold_multiplier() * _huddle_factor() * _night_minutes_left()
+	return NIGHT_DRAIN_PER_SEC * _huddle_factor() * _night_minutes_left()
 
 ## 今夜还剩多少游戏分（夜 = [20:00, 24:00) ∪ [00:00, 06:00)，共 600 分）。
 func _night_minutes_left() -> float:
@@ -217,11 +207,6 @@ func _night_minutes_left() -> float:
 func _huddle_factor() -> float:
 	var red := minf(float(_huddle_count) * HUDDLE_PER_NEIGHBOR, HUDDLE_MAX_REDUCTION)
 	return 1.0 - red
-
-## 环境有多冷（>1 = 更冷）。**季节系统 / 下雨的接入点**，详见文件头。
-## 当前恒 1.0 = "非冬天、不下雨"。
-func _cold_multiplier() -> float:
-	return 1.0
 
 ## 定期重算邻近数。见 `HUDDLE_REFRESH_MIN` 的注释（每帧扫格会吃爆帧预算）。
 func _refresh_huddle(dt: float) -> void:

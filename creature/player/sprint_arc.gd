@@ -83,6 +83,7 @@ const MIN_ALPHA := 0.02
 
 var _creature: Creature = null
 var _sprint: Sprint = null
+var _body_sprite: Sprite2D
 var _alpha := 0.0
 
 func _ready() -> void:
@@ -91,6 +92,7 @@ func _ready() -> void:
 	if _creature == null:
 		push_warning("[体力圈] 父节点不是 Creature，本节点不起作用")
 		return
+	_body_sprite = _creature.get_node_or_null("Sprite2D") as Sprite2D
 	# ⚠⚠ **不能在这里 `get_component()`** —— Godot 的 `_ready` 是**子节点先跑**，
 	#   而组件是宿主在**它自己的 `_ready`** 里才装配的（`Creature._build_components()`）。
 	#   所以此刻取组件**必然是 null** —— 圈会永远不显示（实测踩过：
@@ -129,6 +131,8 @@ var _last_fill := -1.0
 func _process(dt: float) -> void:
 	if _sprint == null or _creature == null:
 		return
+	if _body_sprite != null:
+		position = _body_sprite.position
 	# 死了 / 藏进高草 -> 不画（藏起来就该彻底看不见，否则会暴露位置）
 	if not _creature.is_alive() or _creature.is_concealed():
 		if _alpha != 0.0:

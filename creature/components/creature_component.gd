@@ -14,6 +14,10 @@ var creature: Node = null   # 宿主生物（由 Creature 在装配时注入）
 func setup(host: Node) -> void:
 	creature = host
 
+## 全部组件 setup 完成后调用；读取依赖状态、连接跨组件信号放在这里。
+func after_setup() -> void:
+	pass
+
 ## 本组件依赖的其他组件（返回脚本数组）。缺依赖时 Creature 会报错并拒绝装配。
 ## 例：Brain 依赖 GridMover，就 return [GridMover]。
 func requires() -> Array:

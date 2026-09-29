@@ -54,7 +54,7 @@ extends CreatureComponent
 ## 四、它管什么 / 不管什么
 ## ══════════════════════════════════════════════════════════════════
 ##   管：睡眠状态机、睡眠期间的恢复、唤醒判定、睡/醒带来的身体折扣。
-##   不管：**时间加速**（那是编排层的策略，见 `world/sleep_director.gd`）、
+##   不管：**时间加速**（那是编排层的策略，见 `creature/player/sleep_director.gd`）、
 ##        **怎么显示**（UI 的事）、**困了想不想睡**（`Brain` 的 rest 驱动的事）。
 
 ## 睡眠状态。见文件头第二节。
@@ -75,6 +75,8 @@ enum Wake {
 	MANUAL,      # 自己按 R 叫醒
 }
 
+signal woke(kind: int)
+
 ## 躺下到真正睡着的延迟（游戏分）。这一小段是"还能反悔"的窗口。
 const ONSET_MIN := 2.0
 
@@ -94,7 +96,7 @@ const RECOVER_PER_MIN := 0.1
 const WAKE_FATIGUE_RATIO := 0.95
 
 ## 一次最多睡多久（游戏分 = 12 游戏小时）。
-## 【为什么要有上限】`world/sleep_director.gd` 会把时间加速 30 倍 ——
+## 【为什么要有上限】`creature/player/sleep_director.gd` 会把时间加速 30 倍 ——
 ##   没有上限的话"疲劳回不满就永远睡"会把加速态无限拖下去。
 const MAX_SLEEP_MIN := 720.0
 
@@ -277,6 +279,7 @@ func _wake(reason: String, kind: Wake, next: State) -> void:
 	_wake_reason = reason
 	_wake_kind = kind
 	_known_nearby.clear()       # 醒了就不再有"背景名单"，下次躺下重新快照
+	woke.emit(kind)
 	Log.ev(Log.CAT_SLEEP, "%s 醒了（%s），已睡 %.0f 游戏分" % [creature.tag(), reason, _slept])
 	_slept = 0.0
 

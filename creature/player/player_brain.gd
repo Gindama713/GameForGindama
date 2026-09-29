@@ -19,9 +19,6 @@ extends CreatureComponent
 ##   `current_speed()` 是**基类聚合各组件协议得来的**（基类不认识 Body/Needs/Aging/Sprint），
 ##   所以本组件也**不点名任何减速/加速来源**。
 ##
-## 【意图先过 PlayerIntent】行走请求一律 `submit → apply → 执行`，
-##   将来「痛/慌/累夺走控制」插在 `PlayerIntent.apply()`，不动本文件主干。
-
 ## true = 按住方向键连续走（决策1 定稿）；false = 按一次走一格（回合感，留作可切换）。
 const HOLD_MOVE := true
 
@@ -48,7 +45,6 @@ const DIR_NAMES := {
 var _step_acc: float = 0.0          # 距上一次迈步攒了多久（游戏分钟）
 var _prev: Vector2i = Vector2i.ZERO  # 上一次读到的输入方向（HOLD_MOVE=false 时的边沿检测用）
 var _sleep_key_prev := false         # 上一帧睡眠键是否按下（自己做的边沿检测，见 ACTION_SLEEP）
-var _intent := PlayerIntent.new()    # 意图 + 干扰层挂点（v1 直通）
 
 func requires() -> Array:
 	return [GridMover]               # 硬依赖：没有移动组件就无从行动（与 Brain 同）
@@ -118,14 +114,10 @@ func tick(dt: float) -> void:
 ## 走不动时**不重置计时**（越界/被占/被否决都会返回 false）→ 下一帧继续试，
 ## 与 Brain 的"退化游荡、下次再试"是同一种容错风格。
 func _submit(dir: Vector2i) -> void:
-	_intent.submit(dir)
-	_intent.apply(creature)                       # 干扰层挂点（v1 直通，不改 dir）
-	if _intent.dir == Vector2i.ZERO:
-		return                                    # 干扰层有权把意图清空（将来的"僵住"）
 	var mover := creature.get_component(GridMover) as GridMover
 	if mover == null:
 		return
-	if mover.try_step(_intent.dir):
+	if mover.try_step(dir):
 		_step_acc = 0.0
 
 # ---------------- 输入读取 ----------------

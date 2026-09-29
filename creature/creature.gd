@@ -130,8 +130,12 @@ func _build_components() -> void:
 	_components.clear()
 	for s in def.component_scripts:
 		var comp: CreatureComponent = s.new()
-		comp.setup(self)
 		_components[s.resource_path] = comp
+	# 先注册全部组件，再初始化；依赖查询不受定义中的排列顺序影响。
+	for comp: CreatureComponent in _components.values():
+		comp.setup(self)
+	for comp: CreatureComponent in _components.values():
+		comp.after_setup()
 
 func get_component(script: Script) -> CreatureComponent:
 	return _components.get(script.resource_path)
@@ -162,10 +166,10 @@ func _get_property_list() -> Array[Dictionary]:
 	return props
 
 ## 只读合成属性：EDITOR 让它出现在检查器里，READ_ONLY 让它不可改（不写 STORAGE → 不会被存进 .tscn）
-func _debug_prop(name: String, type: int) -> Dictionary:
+func _debug_prop(property_name: String, property_type: int) -> Dictionary:
 	return {
-		"name": name,
-		"type": type,
+		"name": property_name,
+		"type": property_type,
 		"usage": PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY,
 	}
 
@@ -245,23 +249,9 @@ func _on_tick(dt: float) -> void:
 	check_dead_state()
 
 # ---------------- 网格占位 ----------------
-## 该格能否被我占：在界内 + **地形可踩** + 是空格或是自己。
-##
-## 【为什么要查地形（2026-09-20 补）】原先只查界内和占格，于是"能不能站"与"能不能走过去"
-##   是两套规则 —— `GridMover` 走一步要 `Terrain.walkable()`，而落格不需要。
-##   现在没有东西会主动把自己放进水里，**但规则不对称就是雷**：
-##   将来任何一个"把 X 放到空格上"的工具（落物 / 传送 / 繁殖找空位）都会直接踩进去。
-##   补上这一条，让**"能落格"成为"能移动"的真子集** —— 同一事实只有一处定义。
-##   `self.is_terrain_ok()` 见下方；`unknown`（黑土）与 `grass` 都是 walkable，不受影响。
+## 移动与出生共用 GridManager 的通行规则，包含地形、地物和生物占格。
 func can_place_at(c: Vector2i) -> bool:
-	if not GridManager.in_bounds(c.x, c.y):
-		return false
-	var cell := GridManager.cell_at(c.x, c.y)
-	if cell == null:
-		return false
-	if not Terrain.walkable(cell.terrain):
-		return false
-	return cell.content == null or cell.content == self
+	return GridManager.can_enter(c, self)
 
 ## 写入占格。**占格唯一入口 = GridManager.occupy()**（同时维护空格集合）。
 func _place_at(c: Vector2i) -> bool:
@@ -272,8 +262,8 @@ func _place_at(c: Vector2i) -> bool:
 	if not GridManager.occupy(c, self):
 		push_error("[%s] %s 已被 %s 占用，未抢占" % [tag(), c, cell.content])
 		return false
-	# grid_to_world 返回格子左上角，加半格才居中
-	position = GridManager.grid.grid_to_world(c) + Vector2(Grid.CELL_SIZE, Grid.CELL_SIZE) * 0.5
+	# 根节点在脚下，让 Godot Y 排序依据接地点；身体图片向上延伸。
+	position = GridManager.grid.grid_to_world(c) + Vector2(0.5, 1.0) * Grid.CELL_SIZE
 	return true
 
 ## 交还所占格子（死亡 / 释放时）。释放唯一入口 = GridManager.release()。
@@ -305,9 +295,9 @@ const BODY_SIZE := 20.0   # 兜底色块边长（格子 32px，留边显"棋子"
 ##   有图 -> 隐藏 Sprite2D；无图 -> _draw() 提前 return 不画兜底色块。
 ## 只在「生成」与「移动」两个时机调用 —— 地形只在移动时变，不必每帧重算。
 func _apply_appearance() -> void:
-	var hidden := is_concealed()
+	var concealed: bool = is_concealed()
 	if _sprite != null:
-		_sprite.visible = not hidden
+		_sprite.visible = not concealed
 	queue_redraw()
 
 func _render() -> void:
@@ -315,9 +305,7 @@ func _render() -> void:
 		queue_redraw()          # 走 _draw 的色块兜底
 		return
 	_sprite.texture = def.texture
-	var k := float(Grid.CELL_SIZE) / float(def.texture.get_width())
-	_sprite.scale = Vector2(k, k) * _aggregate_scale()
-	_apply_injury_tint()
+	_refresh_growth_scale()
 
 ## 按伤势给精灵染色（协议 7 聚合）。**死后不覆盖** —— 死亡色调是更重的终态。
 func _apply_injury_tint() -> void:
@@ -424,6 +412,7 @@ func _refresh_growth_scale() -> void:
 		return
 	var k := float(Grid.CELL_SIZE) / float(def.texture.get_width())
 	_sprite.scale = Vector2(k, k) * _aggregate_scale()
+	_sprite.position.y = -def.texture.get_height() * _sprite.scale.y * 0.5
 	_apply_injury_tint()
 
 func _draw() -> void:
@@ -435,4 +424,4 @@ func _draw() -> void:
 	# 无图物种也按伤势染色（与有图物种同一套协议，只是改的是兜底块的颜色）
 	if _alive:
 		col = col * _aggregate_tint()
-	draw_rect(Rect2(Vector2.ONE * -BODY_SIZE * 0.5, Vector2.ONE * BODY_SIZE), col)
+	draw_rect(Rect2(Vector2(-BODY_SIZE * 0.5, -BODY_SIZE), Vector2.ONE * BODY_SIZE), col)

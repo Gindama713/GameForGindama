@@ -8,20 +8,21 @@ extends Node
 ##   GridManager.terrain_cells(id)    -> 某个地形的全部格（派生缓存，O(1) 取表）
 ##   GridManager.grid.grid_to_world(...) 等坐标换算
 ##
-## 【纪律】Cell.content 是占格的唯一事实来源；`_free` 是它的**派生缓存**，
-## 只允许被 occupy()/release() 这两个入口维护 —— 绝不绕过入口直接写 content。
+## Cell.content 是生物占格事实，Cell.feature 是地物事实；不要绕过写入口修改。
+## `_free` 从 can_enter() 派生，由占格、释放、地物放置/移除及地形重建同步。
 ## 同理 `_terrain_cells` 是 `Cell.terrain` 的**派生缓存**，只由 rebuild_terrain_index() 维护。
 
 ## 网格尺寸的**唯一来源**（Grid 自己不再给默认值，避免两处各写一份尺寸）
 ## 2026-09-19：40×24 -> **100×100**（草原环境）-> **130×130**。
 ##   扩到 130 是为了：草原中心改放在「离地图正中半径 50 的圆周」上随机取点后，
 ##   草块（长半轴 ~11 + 噪声）连中心一起仍能**整个落在图内**（中心到边 = 65 > 50 + 11.5）。
-##   130 格 × 32px = 4160×4160 世界像素，仍靠可拖动/缩放相机（world/camera_rig.gd）观察。
+##   130 格 × 32px = 4160×4160 世界像素，仍靠可拖动/缩放相机（world/presentation/camera_rig.gd）观察。
 const WIDTH := 130
 const HEIGHT := 130
 
 var grid: Grid
 var _free: Dictionary = {}   # Vector2i -> true（空格集合，派生缓存）
+var _terrain_exclusions: Dictionary = {}  # 格 -> {地形 id: 排除次数}
 
 ## 地形索引（派生缓存 2）：地形 id -> 该地形的全部格坐标。
 ## 【为什么要缓存】"最近的某地形格在哪"如果每次按半径扫 O(r²)，生物一多就撑不住。
@@ -53,17 +54,69 @@ func cell_at(x: int, y: int) -> Grid.Cell:
 func in_bounds(x: int, y: int) -> bool:
 	return grid.in_bounds(Vector2i(x, y))
 
-## 占格唯一入口。目标为空、或已经是自己 → 成功；被别人占着 → 拒绝（不静默抢占）。
+## 静态通行事实与动态占格分开；地物只通过 blocks_movement 协议参与。
+func is_walkable(c: Vector2i) -> bool:
+	var cell: Grid.Cell = grid.get_cell(c)
+	return cell != null and Terrain.walkable(cell.terrain) \
+		and (cell.feature == null or not bool(cell.feature.call("blocks_movement")))
+
+func can_enter(c: Vector2i, who: Variant = null) -> bool:
+	var cell: Grid.Cell = grid.get_cell(c)
+	return is_walkable(c) and (cell.content == null or cell.content == who)
+
+func place_feature(c: Vector2i, feature: RefCounted) -> bool:
+	if feature == null or not feature.has_method("blocks_movement"):
+		push_error("地物必须提供 blocks_movement 通行协议")
+		return false
+	var cell: Grid.Cell = grid.get_cell(c)
+	if cell == null or cell.feature != null or not Terrain.walkable(cell.terrain):
+		return false
+	if bool(feature.call("blocks_movement")) and cell.content != null:
+		return false
+	cell.feature = feature
+	_sync_free(c)
+	return true
+
+func remove_feature(c: Vector2i, feature: RefCounted) -> void:
+	var cell: Grid.Cell = grid.get_cell(c)
+	if cell != null and cell.feature == feature:
+		cell.feature = null
+		_sync_free(c)
+
+func feature_at(c: Vector2i) -> RefCounted:
+	var cell: Grid.Cell = grid.get_cell(c)
+	return cell.feature if cell != null else null
+
+## 树冠等外观范围可以排除草的扩散，仍只由根部决定通行。
+func adjust_terrain_exclusion(c: Vector2i, terrain: StringName, change: int) -> void:
+	var excluded: Dictionary = _terrain_exclusions.get(c, {})
+	var count_value: int = int(excluded.get(terrain, 0)) + change
+	assert(count_value >= 0, "地形排除必须成对释放")
+	if count_value > 0:
+		excluded[terrain] = count_value
+	else:
+		excluded.erase(terrain)
+	if excluded.is_empty():
+		_terrain_exclusions.erase(c)
+	else:
+		_terrain_exclusions[c] = excluded
+
+func allows_terrain(c: Vector2i, terrain: StringName) -> bool:
+	return grid.in_bounds(c) and int(_terrain_exclusions.get(c, {}).get(terrain, 0)) == 0
+
+func _sync_free(c: Vector2i) -> void:
+	if can_enter(c):
+		_free[c] = true
+	else:
+		_free.erase(c)
+
+## 生物占格入口：通行规则与移动、出生一致，拒绝水域、阻挡地物和其他占格者。
 func occupy(c: Vector2i, who) -> bool:
 	var cell := grid.get_cell(c)
-	if cell == null:
+	if not can_enter(c, who):
 		return false
-	if cell.content != null and cell.content != who:
-		return false
-	var was: Variant = cell.content
 	cell.content = who
-	if was == null:
-		_free.erase(c)
+	_sync_free(c)
 	return true
 
 ## 释放唯一入口。只放自己占的格（防止误清别人的）。
@@ -72,12 +125,10 @@ func release(c: Vector2i, who) -> void:
 	if cell == null or cell.content != who:
 		return
 	cell.content = null
-	_free[c] = true
+	_sync_free(c)
 
 ## 随机空格。没有空格返回 Vector2i(-1, -1)（用 x<0 判断）。
-## 随机一个**可落格**（界内 + 地形可踩 + 无占格者）。
-## 【与"空格"是同一件事，不是两件】`_free` 由 `_rebuild_free()` 按这三条维护，
-##   所以这里不必再查一遍地形 —— 重复查会变成"两处各定义一次什么算可落"。
+## 从 can_enter() 的派生缓存选择；不重复定义通行规则。
 func random_free_cell() -> Vector2i:
 	if _free.is_empty():
 		return Vector2i(-1, -1)
@@ -113,24 +164,11 @@ func rebuild_terrain_index() -> void:
 	_rebuild_free()
 
 
-## 按**当前地形 + 当前占格**重建"空格集合"。
-##
-## 【为什么要看地形】"空格"的本意是"可以走进去的格"。把水也算成空格，
-##   任何"随机挑一格空的"逻辑就都可能挑到湖里 —— 那个 bug 一旦发生，
-##   表现是"生物凭空出现在水上"，而根因在两屏之外。所以在这里一次定死：
-##   **空格 = 界内 + 地形可踩 + 没有占格者。**
-##
-## 【唯一写入口】本函数是 `_free` 的唯一重建点；单格的增删仍走 occupy/release。
-##   三处若各写各的"什么算空"，迟早朝三个方向漂移（本项目已复发多次）。
+## 全量重建；单格写入口统一调用 _sync_free()。
 func _rebuild_free() -> void:
 	_free.clear()
 	for c in grid.cells.keys():
-		var cell: Grid.Cell = grid.cells[c]
-		if cell == null or cell.content != null:
-			continue
-		if not Terrain.walkable(cell.terrain):
-			continue
-		_free[c] = true
+		_sync_free(c)
 
 ## 某个地形的全部格（只读视图；返回的是副本，调用方改不动缓存）。
 ## 没有这种地形 -> 空数组。查询"最近的某地形格"请自己遍历它 —— 代价 O(格数)。

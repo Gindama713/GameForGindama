@@ -24,6 +24,13 @@ extends Resource
 ## 仅用于分组与显示（将来「按类别批量选部位」的选择器）。**不参与任何规则判定。**
 @export var category: String = "other"
 
+## 抓握部位的表现数据；规则仍只读取 limb_types。
+@export var grasp_label: String = ""
+@export var grasp_texture: Texture2D
+@export var grasp_flip_h: bool = false
+## 相对宿主身体图片的尺寸，原点在图片中心。
+@export var grasp_offset: Vector2 = Vector2.ZERO
+
 func is_limb() -> bool:
 	return not limb_types.is_empty()
 
@@ -44,4 +51,6 @@ func validate() -> Array[String]:
 		errs.append("部位缺 id")
 	if max_hp <= 0.0:
 		errs.append("部位 %s 的 max_hp 必须 > 0（当前 %.1f）" % [id, max_hp])
+	if grasp_texture != null and (not has_limb_type("grasp") or grasp_label.strip_edges().is_empty()):
+		errs.append("部位 %s 配有手部图片，但缺少抓握职能或手部名称" % id)
 	return errs

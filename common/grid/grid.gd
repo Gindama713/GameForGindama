@@ -36,6 +36,7 @@ class Cell:
 	var terrain: StringName = &"unknown"   # 以后放 地形类型（沙/石/草...）
 	var content = null                      # 占格者（活体/物品），**唯一**——同格只容一个
 	var corpse = null                       # 尸体（不占 content，活体可以从这格过）
+	var feature: RefCounted = null           # 地物；与生物占格分层，只要求通行协议
 
 	func _init(p_coord: Vector2i):
 		coord = p_coord

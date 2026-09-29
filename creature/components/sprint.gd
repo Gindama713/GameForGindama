@@ -59,7 +59,7 @@ extends CreatureComponent
 ## ══════════════════════════════════════════════════════════════════
 ##   管：**现在能不能跑**（体力够不够、有没有在冷却）+ **跑起来多快**（协议 6b）
 ##     + **跑起来多费**（协议 8 的 4×）+ **体力怎么涨落**。
-##   不管：**往哪跑**（Brain / PlayerBrain）、**体力怎么显示**（`creature/sprint_arc.gd`）、
+##   不管：**往哪跑**（Brain / PlayerBrain）、**体力怎么显示**（`creature/player/sprint_arc.gd`）、
 ##        **疲劳条自己的账**（那是 `need_fatigue.tres` 的 `drain_rate`，本组件只通过协议 8 影响倍率）。
 
 ## 用哪条需求当**疲劳**（也就是体力上限的来源）。字面量收敛到 `NeedIds.FATIGUE`（唯一事实来源）。
@@ -133,7 +133,7 @@ var _requested_by: String = ""
 
 ## 「最近有没有人想跑」的余辉（游戏分）。**纯给表现层用**。
 ## 【为什么需要它】玩家按住 Shift 但体力不够时会"什么都不发生" —— 没有反馈。
-##   本值让 `creature/sprint_arc.gd` 在这种情况下也把体力圆弧画出来，
+##   本值让 `creature/player/sprint_arc.gd` 在这种情况下也把体力圆弧画出来，
 ##   于是"跑不动"变成看得见的（圆弧见底 / 泛红），而不是"按键坏了"。
 var _request_glow := 0.0
 
@@ -145,11 +145,13 @@ func setup(host: Node) -> void:
 	_running = false
 	_cooldown = 0.0
 	_run_seconds = 0.0
-	_stamina = stamina_max()   # 开局满体力（= 满疲劳）
 	_rest_timer = 0.0
 	_want_this_frame = false
 	_requested_by = ""
 	_request_glow = 0.0
+
+func after_setup() -> void:
+	_stamina = stamina_max()   # Needs 已完成初始化，开局体力读取实际上限。
 
 # ---------------- 生命周期 ----------------
 

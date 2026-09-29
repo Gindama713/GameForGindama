@@ -5,6 +5,8 @@ extends RefCounted
 
 var def: NeedDef
 var value: float
+# 由持有此状态的 Needs 组件管理日志去重。
+@warning_ignore("unused_private_class_variable")
 var _depleted_logged: bool = false   # 调试日志去重
 
 func _init(p_def: NeedDef) -> void:

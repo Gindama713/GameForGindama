@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="WorldObjectDef" format=3]
+
+[ext_resource type="Script" path="res://world/objects/world_object_def.gd" id="1"]
+[ext_resource type="Texture2D" path="res://world/objects/art/flowers.png" id="2"]
+
+[ext_resource type="Resource" path="res://items/data/wildflowers.tres" id="3"]
+
+[sub_resource type="FastNoiseLite" id="Noise"]
+noise_type = 1
+frequency = 0.065
+fractal_octaves = 2
+
+[sub_resource type="Curve" id="RegionDensity"]
+_data = [Vector2(0, 0.25), 0.0, 1.166667, 1, 1, Vector2(0.3, 0.6), 1.166667, 2.0, 1, 1, Vector2(0.5, 1), 2.0, -2.0, 1, 1, Vector2(0.7, 0.6), -2.0, -1.166667, 1, 1, Vector2(1, 0.25), -1.166667, 0.0, 1, 1]
+point_count = 5
+
+[resource]
+script = ExtResource("1")
+id = &"flowers"
+display_name = "野花"
+texture = ExtResource("2")
+height_cells = 0.7
+region_density = SubResource("RegionDensity")
+gather_item = ExtResource("3")
+gather_action = "采摘"
+max_integrity = 3
+terrain_weights = {&"unknown": 1.0}
+nearby_terrains = Array[StringName]([&"grass", &"tall_grass"])
+nearby_radius_cells = 5
+density = 0.95
+patch_noise = SubResource("Noise")
+patch_threshold = 0.1

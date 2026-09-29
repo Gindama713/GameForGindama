@@ -22,6 +22,7 @@ const MARGIN := 8.0
 
 var _player: Creature = null
 
+var _panel: PanelContainer
 var _root: VBoxContainer
 var _total_bar: PixelBar
 var _total_lbl: Label
@@ -58,12 +59,12 @@ func _build() -> void:
 	offset_bottom = -MARGIN
 	mouse_filter = Control.MOUSE_FILTER_IGNORE   # HUD 只看不点，不抢鼠标
 
-	var panel := PanelContainer.new()
-	panel.name = "HudPanel"
-	add_child(panel)
+	_panel = PanelContainer.new()
+	_panel.name = "HudPanel"
+	add_child(_panel)
 	_root = VBoxContainer.new()
 	_root.add_theme_constant_override("separation", 4)
-	panel.add_child(_root)
+	_panel.add_child(_root)
 
 	# —— 总血行 ——
 	var hp_row := HBoxContainer.new()
@@ -121,17 +122,16 @@ func _on_player_spawned(c: Node) -> void:
 ## ⚠ 用 `call_deferred` / 等一帧：`size` 要等容器排版跑完才准，立刻读会是 0。
 func _fit_to_screen() -> void:
 	await get_tree().process_frame
-	var panel := get_node_or_null("HudPanel") as Control
-	if panel == null:
+	if _panel == null:
 		return
 	var vp := get_viewport_rect().size
 	# 面板高度以**实际内容**为准（容器最小尺寸），不靠父控件
-	var h := maxf(panel.get_combined_minimum_size().y, panel.size.y)
+	var h := maxf(_panel.get_combined_minimum_size().y, _panel.size.y)
 	# 面板锚左下角，所以往上推 = 给一个负的 offset_top，同时 offset_bottom 补足高度
 	offset_top = -MARGIN - h
 	offset_bottom = -MARGIN
 	# 宽度同理：让面板贴左边、只占内容宽（不铺满屏幕）
-	var w := maxf(panel.get_combined_minimum_size().x, panel.size.x)
+	var w := maxf(_panel.get_combined_minimum_size().x, _panel.size.x)
 	offset_right = MARGIN + w
 	if h > vp.y - MARGIN * 2.0:
 		push_warning("[HUD] 面板高 %.0f 超过屏幕可用高度 %.0f，可能仍被裁切" % [h, vp.y - MARGIN * 2.0])

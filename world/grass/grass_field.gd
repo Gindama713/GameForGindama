@@ -144,7 +144,7 @@ func _can_colonize(c: Vector2i) -> bool:
 	if tiles.has(c):
 		return false
 	var cell := GridManager.cell_at(c.x, c.y)
-	if cell == null or cell.content != null or cell.corpse != null:
+	if not GridManager.can_enter(c) or cell.corpse != null or not GridManager.allows_terrain(c, Terrain.GRASS):
 		return false
 	return Terrain.plantable(cell.terrain)
 
@@ -192,7 +192,7 @@ func edible_nearest(from: Vector2i, radius: int) -> Vector2i:
 	var r2 := float(radius * radius)
 	for coord in tiles.keys():
 		var t: GrassTile = tiles[coord]
-		if not t.is_edible():
+		if not t.is_edible() or not GridManager.is_walkable(coord):
 			continue
 		var d := float((coord - from).length_squared())
 		if d <= r2 and d < best_d:
@@ -212,7 +212,7 @@ func tender_nearest(from: Vector2i, radius: int) -> Vector2i:
 	var r2 := float(radius * radius)
 	for coord in tiles.keys():
 		var t: GrassTile = tiles[coord]
-		if not is_tender(coord):
+		if not is_tender(coord) or not GridManager.is_walkable(coord):
 			continue
 		var d := float((coord - from).length_squared())
 		if d <= r2 and float(t.durability) < best_dur:

@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="BodyPartDef" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="BodyPartDef" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://creature/body_part_def.gd" id="1"]
+[ext_resource type="Texture2D" path="res://creature/player/art/hand.png" id="2_hand"]
 
 [resource]
 script = ExtResource("1")
@@ -9,3 +10,7 @@ label = "左臂"
 max_hp = 50.0
 limb_types = Array[String](["grasp"])
 category = "arm"
+grasp_label = "左手"
+grasp_texture = ExtResource("2_hand")
+grasp_flip_h = true
+grasp_offset = Vector2(-0.46, 0.25)

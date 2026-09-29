@@ -43,14 +43,7 @@ func moved_recently(window: float) -> bool:
 ## 某格能否进入：在界内 + 没被别的生物/东西占（自己除外）。
 ## **尸体不算占格**（corpse 不在 content 里）—— 活体"能"走进尸体格。
 func is_cell_free(c: Vector2i) -> bool:
-	if not GridManager.in_bounds(c.x, c.y):
-		return false
-	var cell := GridManager.cell_at(c.x, c.y)
-	if cell == null:
-		return false
-	if not Terrain.walkable(cell.terrain):
-		return false             # 地形不可踩（草/高草都可踩；将来水面/岩壁才会拦）
-	return cell.content == null or cell.content == creature
+	return GridManager.can_enter(c, creature)
 
 ## 当前四周可走的方向（供大脑挑选）。
 ## 规则（用户拍板 2026-09-19）：**默认不踩尸体格**；只有首选全空（被围死）时，
@@ -74,6 +67,8 @@ func free_directions() -> Array[Vector2i]:
 ## 尝试朝 offset 方向走一格；成功返回 true。
 func try_step(offset: Vector2i) -> bool:
 	if not can_move():
+		return false
+	if not is_cell_free(creature.coord + offset):
 		return false
 	# ⚠ 显式标类型：`creature` 在组件基类里是 `Node`，`move_to()` 的返回值是 Variant，
 	#   用 `:=` 会 Parse Error（事实文档 §2.4 坑 7，本项目已复发多次）。

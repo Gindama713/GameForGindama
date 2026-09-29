@@ -16,7 +16,7 @@ const WATER_ID := NeedIds.WATER
 var _cooldown: float = 0.0
 
 func requires() -> Array:
-	return [Aging, Lineage]        # 硬依赖：要年龄(性成熟)与性别
+	return [Aging, Lineage, Perception]
 
 func setup(host: Node) -> void:
 	super.setup(host)
@@ -38,6 +38,8 @@ func tick(dt: float) -> void:
 
 ## 自己是否"想生且能生"：母、性成熟、营养够。
 func _self_ready() -> bool:
+	if _life() == null:
+		return false
 	var lin := creature.get_component(Lineage) as Lineage
 	var age := creature.get_component(Aging) as Aging
 	if lin == null or age == null:
@@ -55,6 +57,9 @@ func _find_mate() -> Creature:
 		return null
 	for n in perc.neighbors():
 		var c := n as Creature
+		var offset: Vector2i = c.coord - creature.coord
+		if abs(offset.x) > 1 or abs(offset.y) > 1:
+			continue
 		var cl: Lineage = c.get_component(Lineage) as Lineage
 		var ca: Aging = c.get_component(Aging) as Aging
 		if cl == null or ca == null:

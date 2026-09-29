@@ -1,6 +1,8 @@
 class_name Body
 extends CreatureComponent
 
+signal injured(part: BodyPart)
+
 ## 部位组件（数据驱动）：部位清单来自 CreatureDef.body_parts。
 ## 总血 = 各部位之和；出血会随时间掉血（在 TimeSystem 时钟下）。
 ## 断肢 -> 该部位 hp 归零 -> 通过「移动许可协议」让宿主走不动（涌现式，不查表）。
@@ -44,6 +46,7 @@ func hurt(part: BodyPart, damage: float, bleed: float = 0.0) -> void:
 	if bleed > 0.0:
 		part.add_bleeding(bleed)
 	_note(part)
+	injured.emit(part)
 
 ## 部位跨阈值时打日志（去重，不刷屏）
 func _note(part: BodyPart) -> void:
@@ -146,6 +149,13 @@ func can_locomote() -> bool:
 			if p.hp > 0.0:
 				return true
 	return not has_stance
+
+## 至少一个仍能工作的抓握肢体才能收集物品。
+func can_grasp() -> bool:
+	for part in parts:
+		if part.def.has_limb_type("grasp") and part.function_ok():
+			return true
+	return false
 
 func total_hp() -> float:
 	var s := 0.0

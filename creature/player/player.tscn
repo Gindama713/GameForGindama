@@ -1,16 +1,20 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene format=3]
 
 [ext_resource type="Script" path="res://creature/creature.gd" id="1_creature"]
 [ext_resource type="Resource" path="res://creature/player/player_def.tres" id="2_def"]
 [ext_resource type="Texture2D" path="res://creature/player/art/character.png" id="3_sprite"]
+[ext_resource type="Script" path="res://creature/presentation/hand_view.gd" id="4_lddyo"]
 [ext_resource type="Script" path="res://creature/player/sprint_arc.gd" id="9_arc"]
 
-[node name="Player" type="Node2D"]
+[node name="Player" type="Node2D" unique_id=1263249093]
 script = ExtResource("1_creature")
 def = ExtResource("2_def")
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1950979157]
 texture = ExtResource("3_sprite")
 
-[node name="SprintArc" type="Node2D" parent="."]
+[node name="Hands" type="Node2D" parent="Sprite2D" unique_id=1203419096]
+script = ExtResource("4_lddyo")
+
+[node name="SprintArc" type="Node2D" parent="." unique_id=671228778]
 script = ExtResource("9_arc")
