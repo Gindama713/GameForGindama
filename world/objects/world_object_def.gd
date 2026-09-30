@@ -28,11 +28,23 @@ extends Resource
 @export var spacing_cells: float = 1.0
 ## 与不可走地形、地图边界的留白，单位为格。
 @export var land_margin_cells: int = 0
+## 只有生长地物填写以下字段；其余地物保持 0，不参与时钟更新。
+@export var growth_duration_minutes: float = 0.0
+@export var wild_growth_distribution: Curve
+@export var seed_texture: Texture2D
+@export_range(1.0, 99.0) var sprout_at_percent: float = 5.0
+@export var seed_height_cells: float = 0.3
+@export var seed_anchor: Vector2 = Vector2(0.5, 0.95)
+@export var sapling_height_cells: float = 0.5
 
 
 func visual_rect_cells() -> Rect2:
-	var dimensions: Vector2 = Vector2(float(texture.get_width()) / texture.get_height(), 1.0) * height_cells
-	var origin: Vector2 = -dimensions * anchor
+	return visual_rect_cells_for(texture, height_cells, anchor)
+
+
+func visual_rect_cells_for(visual_texture: Texture2D, visual_height: float, visual_anchor: Vector2) -> Rect2:
+	var dimensions: Vector2 = Vector2(float(visual_texture.get_width()) / visual_texture.get_height(), 1.0) * visual_height
+	var origin: Vector2 = -dimensions * visual_anchor
 	var angle: float = deg_to_rad(rotation_degrees)
 	var bounds: Rect2 = Rect2(origin.rotated(angle), Vector2.ZERO)
 	for corner: Vector2 in [origin + Vector2(dimensions.x, 0), origin + Vector2(0, dimensions.y), origin + dimensions]:
@@ -70,6 +82,17 @@ func validate() -> Array[String]:
 		errors.append("terrain_weights 不能为空")
 	if nearby_radius_cells < 0:
 		errors.append("nearby_radius_cells 不能为负")
+	if growth_duration_minutes < 0.0:
+		errors.append("生长时长不能为负")
+	if growth_duration_minutes > 0.0:
+		if wild_growth_distribution == null or wild_growth_distribution.point_count < 2 or seed_texture == null:
+			errors.append("生长地物需要野生年龄分布和种子贴图")
+		if sprout_at_percent <= 0.0 or sprout_at_percent >= 100.0:
+			errors.append("发芽进度必须在 0 到 100 之间")
+		if seed_height_cells <= 0.0 or sapling_height_cells <= 0.0 or sapling_height_cells > height_cells:
+			errors.append("种子或幼树尺寸无效")
+		if seed_anchor.x < 0.0 or seed_anchor.x > 1.0 or seed_anchor.y < 0.0 or seed_anchor.y > 1.0:
+			errors.append("种子锚点必须在贴图范围内")
 	for terrain in excluded_terrains:
 		if not Terrain.DEFS.has(terrain):
 			errors.append("无效的排除地形：%s" % terrain)

@@ -7,6 +7,7 @@ const DIRECTIONS: Array[Vector2i] = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, 
 class Placement:
 	var definition: WorldObjectDef
 	var coord: Vector2i
+	var initial_growth: float = 100.0
 
 
 static func generate(grid: Grid, seed_value: int, definitions: Array[WorldObjectDef], region_noise: FastNoiseLite) -> Array[Placement]:
@@ -31,6 +32,8 @@ static func generate(grid: Grid, seed_value: int, definitions: Array[WorldObject
 	for definition in definitions:
 		var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 		rng.seed = seed_value ^ String(definition.id).hash()
+		var growth_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+		growth_rng.seed = rng.seed ^ 0x47524F57
 		var noise: FastNoiseLite = definition.patch_noise.duplicate() as FastNoiseLite
 		noise.seed = rng.randi()
 		var candidates: Array[Vector2i] = []
@@ -62,11 +65,13 @@ static func generate(grid: Grid, seed_value: int, definitions: Array[WorldObject
 				continue
 			if _crowded(coord, definition, occupied, max_spacing):
 				continue
-			if definition.blocks_movement and not _keeps_routes(grid, coord, occupied):
+			if definition.blocks_movement and not keeps_routes(grid, coord, occupied):
 				continue
 			var placement: Placement = Placement.new()
 			placement.definition = definition
 			placement.coord = coord
+			if definition.growth_duration_minutes > 0.0:
+				placement.initial_growth = clampf(definition.wild_growth_distribution.sample(growth_rng.randf()) * 100.0, 0.0, 100.0)
 			occupied[coord] = placement
 			result.append(placement)
 	return result
@@ -125,7 +130,7 @@ static func _open(grid: Grid, coord: Vector2i, occupied: Dictionary) -> bool:
 
 ## 放下阻挡物前，四邻出口必须仍能从周围一圈互通，避免逐步封死通路。
 ## ponytail: 只接受局部能证实连通的落点；大面积密林需要完整连通分析时再扩展。
-static func _keeps_routes(grid: Grid, coord: Vector2i, occupied: Dictionary) -> bool:
+static func keeps_routes(grid: Grid, coord: Vector2i, occupied: Dictionary) -> bool:
 	var exits: Array[Vector2i] = []
 	for direction in DIRECTIONS:
 		if _open(grid, coord + direction, occupied):

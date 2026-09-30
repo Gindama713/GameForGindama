@@ -2,15 +2,19 @@
 
 [ext_resource type="Script" path="res://world/objects/world_object_def.gd" id="1"]
 [ext_resource type="Texture2D" path="res://world/objects/art/pine-tree.png" id="2"]
+[ext_resource type="Texture2D" path="res://world/objects/art/acorn.png" id="2_ec74x"]
 
 [sub_resource type="FastNoiseLite" id="Noise"]
-noise_type = 1
 frequency = 0.09
 fractal_octaves = 3
 
 [sub_resource type="Curve" id="RegionDensity"]
-_data = [Vector2(0, 0), 0.0, 0.000000, 1, 1, Vector2(0.32, 0), 0.000000, 3.055556, 1, 1, Vector2(0.5, 0.55), 3.055556, 2.250000, 1, 1, Vector2(0.7, 1), 2.250000, 0.000000, 1, 1, Vector2(1, 1), 0.000000, 0.0, 1, 1]
+_data = [Vector2(0, 0), 0.0, 0.0, 1, 1, Vector2(0.32, 0), 0.0, 3.055556, 1, 1, Vector2(0.5, 0.55), 3.055556, 2.25, 1, 1, Vector2(0.7, 1), 2.25, 0.0, 1, 1, Vector2(1, 1), 0.0, 0.0, 1, 1]
 point_count = 5
+
+[sub_resource type="Curve" id="Curve_eanyc"]
+_data = [Vector2(0, 0.1), 0.0, 0.0, 0, 0, Vector2(0.2, 0.6), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 3
 
 [resource]
 script = ExtResource("1")
@@ -23,9 +27,14 @@ anchor = Vector2(0.5, 0.965)
 region_density = SubResource("RegionDensity")
 blocks_movement = true
 max_integrity = 100
-terrain_weights = {&"unknown": 1.0}
+terrain_weights = {
+&"unknown": 1.0
+}
 density = 0.06
 patch_noise = SubResource("Noise")
 patch_threshold = -0.2
 spacing_cells = 3.2
 land_margin_cells = 1
+growth_duration_minutes = 28800.0
+wild_growth_distribution = SubResource("Curve_eanyc")
+seed_texture = ExtResource("2_ec74x")

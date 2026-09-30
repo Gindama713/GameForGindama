@@ -56,6 +56,8 @@ func _run() -> void:
 	var flower: WorldObject = null
 	var small_rock: WorldObject = null
 	var boulder: WorldObject = null
+	var mature_trees: int = 0
+	var young_trees: int = 0
 	if not _require(not objects.is_empty(), "没有生成地物"):
 		return
 	for object in objects:
@@ -71,12 +73,17 @@ func _run() -> void:
 			return
 		var sprite: Sprite2D = layer.get_node("Object_%d" % object.id) as Sprite2D
 		var center: Vector2 = GridManager.grid.grid_to_world(object.coord) + Vector2.ONE * Grid.CELL_SIZE * 0.5
-		if not _require(sprite.texture == definition.texture and sprite.position == center
-				and sprite.offset == definition.texture.get_size() * (Vector2(0.5, 0.5) - definition.anchor)
+		if not _require(sprite.texture == object.visual_texture() and sprite.position == center
+				and sprite.offset == sprite.texture.get_size() * (Vector2(0.5, 0.5) - object.visual_anchor())
 				and is_equal_approx(sprite.rotation_degrees, definition.rotation_degrees) and sprite.modulate == Color.WHITE and sprite.self_modulate == Color.WHITE
-				and is_equal_approx(sprite.scale.y * definition.texture.get_height(), definition.height_cells * Grid.CELL_SIZE),
+				and is_equal_approx(sprite.scale.y * sprite.texture.get_height(), object.visual_height_cells() * Grid.CELL_SIZE),
 				"渲染改了原色、旋转、尺寸或格子中心"):
 			return
+		if object.has_growth():
+			if object.growth_percent() >= 60:
+				mature_trees += 1
+			else:
+				young_trees += 1
 		if object.blocks_movement() and blocker == null:
 			blocker = object
 		elif definition.gather_item == preload("res://items/data/wildflowers.tres") and GridManager.can_enter(object.coord) and flower == null:
@@ -114,6 +121,9 @@ func _run() -> void:
 					return
 	if not _require(int(counts[&"pine_tree"]) < 500 and int(counts[&"flowers"]) > 50
 			and flowers_together * 2 > int(counts[&"flowers"]), "树仍太密、花太少或没有形成花片"):
+		return
+	if not _require(mature_trees * 10 >= (mature_trees + young_trees) * 7 and young_trees > 0,
+			"野生树没有以 60% 以上的树为主，或完全没有幼树"):
 		return
 
 	# 在没有地物的同地形副本上重跑生成器，避免把已有地物当成初始世界。
@@ -193,11 +203,42 @@ func _run() -> void:
 			and GridManager.free_count() == before + 1 and not inspector.visible
 			and not layer.has_node("Object_%d" % blocker.id), "移除后状态、通行、空格缓存或渲染没有同步"):
 		return
-	var replacement: WorldObject = field.add(blocker.definition, blocker.coord)
+	var replacement: WorldObject = field.plant(blocker.definition, blocker.coord)
 	if not _require(replacement != null and replacement.id > blocker.id and GridManager.free_count() == before
-			and not GridManager.is_walkable(blocker.coord), "重新放置没有恢复阻挡或对象身份重复"):
+			and not GridManager.is_walkable(blocker.coord) and replacement.growth_percent() == 0
+			and field.object_at_world_position(GridManager.grid.grid_to_world(blocker.coord) + Vector2.ONE * Grid.CELL_SIZE * 0.5) == replacement
+			and field.plant(blocker.definition, blocker.coord) == null, "种下橡子没有占格、可见、阻挡或防止重叠"):
 		return
 	inspector.inspect(replacement.coord)
+	var growth_bar: ProgressBar = inspector.get("_growth_bar") as ProgressBar
+	var seed_sprite: Sprite2D = layer.get_node("Object_%d" % replacement.id) as Sprite2D
+	if not _require((inspector.get("_growth_row") as HBoxContainer).visible and growth_bar.value == 0.0
+			and seed_sprite.texture == blocker.definition.seed_texture, "种植时没有显示橡子和 0% 生长线"):
+		return
+	await get_tree().process_frame
+	if OS.get_cmdline_user_args().has("--capture"):
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(ProjectSettings.globalize_path("res://.godot/tree-seed-preview.png"))
+	if not _require(replacement.growth_percent() == 0, "暂停时树仍然生长"):
+		return
+	var original_time: float = TimeSystem.elapsed
+	TimeSystem.elapsed += TimeSystem.MINUTES_PER_DAY
+	field.call("_on_tick", float(TimeSystem.MINUTES_PER_DAY))
+	if not _require(replacement.growth_percent() == 5 and growth_bar.value == 5.0
+			and seed_sprite.texture == blocker.definition.texture and seed_sprite.position == GridManager.grid.grid_to_world(replacement.coord) + Vector2.ONE * Grid.CELL_SIZE * 0.5,
+			"生长一天后没有从橡子变成固定根部的幼树"):
+		return
+	if OS.get_cmdline_user_args().has("--capture"):
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(ProjectSettings.globalize_path("res://.godot/tree-sapling-preview.png"))
+	TimeSystem.elapsed += blocker.definition.growth_duration_minutes - TimeSystem.MINUTES_PER_DAY
+	field.call("_on_tick", blocker.definition.growth_duration_minutes)
+	if not _require(replacement.growth_percent() == 100 and growth_bar.value == 100.0
+			and is_equal_approx(seed_sprite.scale.y * seed_sprite.texture.get_height(), blocker.definition.height_cells * Grid.CELL_SIZE),
+			"树未按游戏时间长到 100%，或画面尺寸未同步"):
+		return
+	TimeSystem.elapsed = original_time
 	await get_tree().process_frame
 	for size_value: Vector2i in [Vector2i(1280, 720), Vector2i(960, 540)]:
 		get_window().size = size_value
@@ -361,7 +402,8 @@ func _run() -> void:
 	field.clear()
 	if not _require((GridManager.get("_terrain_exclusions") as Dictionary).is_empty(), "地物清除后仍然禁止草扩散"):
 		return
-	print("world_object_smoke: PASS counts=", counts, " seed, routes, terrain, mouse/E, inventory hands/drop, smooth steps, component setup, rendered Y sorting")
+	print("world_object_smoke: PASS counts=", counts, " trees 60+ = ", mature_trees, "/", mature_trees + young_trees,
+			" seed, growth, routes, terrain, mouse/E, inventory hands/drop, smooth steps, rendered Y sorting")
 	get_tree().quit()
 
 
@@ -538,7 +580,7 @@ func _routes_exist(start: Vector2i) -> bool:
 func _signature(items: Array[WorldObjectGenerator.Placement]) -> String:
 	var result: String = ""
 	for item in items:
-		result += "%s|%s\n" % [item.definition.id, item.coord]
+		result += "%s|%s|%.3f\n" % [item.definition.id, item.coord, item.initial_growth]
 	return result.sha256_text()
 
 

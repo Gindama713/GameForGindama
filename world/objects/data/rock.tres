@@ -2,16 +2,14 @@
 
 [ext_resource type="Script" path="res://world/objects/world_object_def.gd" id="1"]
 [ext_resource type="Texture2D" path="res://world/objects/art/rock.png" id="2"]
-
 [ext_resource type="Resource" path="res://items/data/small_stone.tres" id="3"]
 
 [sub_resource type="FastNoiseLite" id="Noise"]
-noise_type = 1
 frequency = 0.09
 fractal_octaves = 3
 
 [sub_resource type="Curve" id="RegionDensity"]
-_data = [Vector2(0, 1), 0.0, 0.000000, 1, 1, Vector2(0.4, 1), 0.000000, -2.166667, 1, 1, Vector2(0.7, 0.35), -2.166667, -0.500000, 1, 1, Vector2(1, 0.2), -0.500000, 0.0, 1, 1]
+_data = [Vector2(0, 1), 0.0, 0.0, 1, 1, Vector2(0.4, 1), 0.0, -2.166667, 1, 1, Vector2(0.7, 0.35), -2.166667, -0.5, 1, 1, Vector2(1, 0.2), -0.5, 0.0, 1, 1]
 point_count = 4
 
 [resource]
@@ -19,15 +17,17 @@ script = ExtResource("1")
 id = &"rock"
 display_name = "小石头"
 texture = ExtResource("2")
-rotation_degrees = -45.0
 height_cells = 0.5
-blocks_movement = false
+rotation_degrees = -45.0
 region_density = SubResource("RegionDensity")
 gather_item = ExtResource("3")
 gather_action = "拾取"
 max_integrity = 80
-terrain_weights = {&"unknown": 1.0, &"grass": 0.25}
-density = 0.32
+terrain_weights = {
+&"grass": 0.25,
+&"unknown": 1.0
+}
+density = 0.28
 patch_noise = SubResource("Noise")
 patch_threshold = 0.2
 spacing_cells = 1.25

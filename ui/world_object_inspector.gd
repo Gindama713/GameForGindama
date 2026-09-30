@@ -5,6 +5,8 @@ extends PanelContainer
 @onready var _field: WorldObjectField = get_parent().get_parent() as WorldObjectField
 var _selected: WorldObject
 var _details: Label
+var _growth_row: HBoxContainer
+var _growth_bar: ProgressBar
 var _action: Button
 var _hint: Label
 @onready var _interaction: WorldObjectInteraction = _field.get_node("Interaction") as WorldObjectInteraction
@@ -28,6 +30,17 @@ func _ready() -> void:
 	_details = Label.new()
 	_details.add_theme_font_size_override("font_size", 11)
 	column.add_child(_details)
+	_growth_row = HBoxContainer.new()
+	column.add_child(_growth_row)
+	var growth_label: Label = Label.new()
+	growth_label.text = "生长"
+	growth_label.add_theme_font_size_override("font_size", 11)
+	_growth_row.add_child(growth_label)
+	_growth_bar = ProgressBar.new()
+	_growth_bar.max_value = 100.0
+	_growth_bar.custom_minimum_size = Vector2(140.0, 14.0)
+	_growth_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_growth_row.add_child(_growth_bar)
 	_action = Button.new()
 	_action.add_theme_font_size_override("font_size", 11)
 	_action.pressed.connect(_gather_selected)
@@ -81,6 +94,9 @@ func _refresh() -> void:
 		_selected.definition.display_name, _selected.id, _selected.coord.x, _selected.coord.y,
 		_selected.integrity, _selected.definition.max_integrity,
 		"阻挡通行" if _selected.blocks_movement() else "可穿过"]
+	_growth_row.visible = _selected.has_growth()
+	if _selected.has_growth():
+		_growth_bar.value = _selected.growth_percent()
 
 	_refresh_action()
 
