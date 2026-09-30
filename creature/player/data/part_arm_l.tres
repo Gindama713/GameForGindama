@@ -13,4 +13,3 @@ category = "arm"
 grasp_label = "左手"
 grasp_texture = ExtResource("2_hand")
 grasp_flip_h = true
-grasp_offset = Vector2(-0.46, 0.25)

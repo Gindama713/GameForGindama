@@ -24,6 +24,13 @@ static var _seed_offset: int = 0
 
 var _components: Dictionary = {}   # 脚本路径(String) -> 组件实例
 var _sprite: Sprite2D
+var _visual_from: Vector2
+var _visual_to: Vector2
+var _visual_started_at: float = 0.0
+var _visual_duration: float = 0.0
+var _last_step_at: float = -1.0
+var _appearance_pending: bool = false
+var _visually_concealed: bool = false
 
 ## 速度总倍率的硬上限（见 `current_speed()`）。疾跑 = 2.0，留一倍余量给将来
 ##   （骑乘 / 下坡 / 药物）—— 但**必须有个顶**，否则某天一个乘法写错就把生物瞬移了。
@@ -54,6 +61,7 @@ func _ready() -> void:
 	_render()
 	_place_at(coord)
 	_apply_appearance()                 # 生成时就可能站在高草里 -> 立刻应用"看不见"
+	set_process(false)                    # 只有跨格动画期间才需要逐帧刷新画面
 	TimeSystem.tick.connect(_on_tick)   # 时间统一来自 TimeSystem；对象释放后连接自动断
 	_log_spawn()
 
@@ -113,7 +121,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var vp := get_viewport()
 		var world_pos: Vector2 = vp.get_canvas_transform().affine_inverse() * event.position
-		if GridManager.grid.world_to_grid(world_pos) != coord:
+		var hit: bool = false
+		if _sprite != null and _sprite.texture != null:
+			hit = _sprite.visible and _sprite.get_rect().has_point(_sprite.to_local(world_pos))
+		else:
+			hit = not _visually_concealed and Rect2(Vector2(-BODY_SIZE * 0.5, -BODY_SIZE), Vector2.ONE * BODY_SIZE).has_point(to_local(world_pos))
+		if not hit:
 			return
 		if _alive:
 			EventBus.creature_clicked.emit(self)
@@ -223,6 +236,8 @@ func lethal_reason_text() -> String:
 func die() -> void:
 	if not _alive:
 		return                                  # 幂等：多个要害同时归零也只死一次
+	if _visual_duration > 0.0:
+		_finish_visual_move()                 # 尸体留在实际占格，避免死在两格之间
 	var why := lethal_reason_text()
 	_alive = false
 	TimeSystem.tick.disconnect(_on_tick)        # 停机机制：把自己从时钟上摘下来
@@ -272,18 +287,57 @@ func _release_cell() -> void:
 
 ## 移动到相邻格（由移动组件调用）。成功返回 true。
 ## 越界或目标被占 → 报错并原地不动（不会留下 coord 与占格不一致的状态）。
-func move_to(target: Vector2i) -> bool:
+func move_to(target: Vector2i, smooth: bool = false) -> bool:
 	if not can_place_at(target):
 		push_error("[%s] 无法移动到 %s（越界或被占），已忽略" % [tag(), target])
 		return false
 	Log.ev(Log.CAT_MOVE, "%s %s → %s" % [tag(), coord, target])
+	var visual_start: Vector2 = position
 	_release_cell()
 	coord = target
 	var ok := _place_at(target)
 	if ok:
-		_apply_appearance()                  # 换了格子 -> 地形可能不同 -> 重新判定隐蔽
+		if smooth:
+			_start_visual_move(visual_start)
+		else:
+			_visual_duration = 0.0
+			_last_step_at = -1.0
+			_appearance_pending = false
+			set_process(false)
+			_apply_appearance()
 		EventBus.creature_moved.emit(self)   # 小地图等表现层重画；将来脚印/噪音也听它
 	return ok
+
+## 占格已经到目标格；只有世界画面从当前脚下位置追到新格。
+func _start_visual_move(from: Vector2) -> void:
+	_visual_from = from
+	_visual_to = position
+	position = from
+	var now: float = TimeSystem.elapsed
+	_visual_duration = def.move_interval / maxf(current_speed(), 0.01)
+	if _last_step_at >= 0.0 and now > _last_step_at:
+		_visual_duration = minf(_visual_duration, now - _last_step_at)
+	_last_step_at = now
+	_visual_started_at = now
+	_appearance_pending = true
+	set_process(true)
+
+func _process(_delta: float) -> void:
+	var progress: float = clampf((TimeSystem.elapsed - _visual_started_at) / _visual_duration, 0.0, 1.0)
+	position = _visual_from.lerp(_visual_to, progress)
+	if _appearance_pending and progress >= 0.5:
+		_appearance_pending = false
+		_apply_appearance()                 # 跨过格界时才切换高草的可见状态
+	if progress >= 1.0:
+		_finish_visual_move()
+
+func _finish_visual_move() -> void:
+	position = _visual_to
+	_visual_duration = 0.0
+	set_process(false)
+	if _appearance_pending:
+		_appearance_pending = false
+		_apply_appearance()
 
 # ---------------- 表现（可选，删掉不影响逻辑） ----------------
 ## 主画面：**有图就用图**（猪 = pic/pig.png 剪影，缩放成一格）；
@@ -295,9 +349,9 @@ const BODY_SIZE := 20.0   # 兜底色块边长（格子 32px，留边显"棋子"
 ##   有图 -> 隐藏 Sprite2D；无图 -> _draw() 提前 return 不画兜底色块。
 ## 只在「生成」与「移动」两个时机调用 —— 地形只在移动时变，不必每帧重算。
 func _apply_appearance() -> void:
-	var concealed: bool = is_concealed()
+	_visually_concealed = is_concealed()
 	if _sprite != null:
-		_sprite.visible = not concealed
+		_sprite.visible = not _visually_concealed
 	queue_redraw()
 
 func _render() -> void:
@@ -416,7 +470,7 @@ func _refresh_growth_scale() -> void:
 	_apply_injury_tint()
 
 func _draw() -> void:
-	if is_concealed():
+	if _visually_concealed:
 		return                  # 藏进高草：连兜底色块也不画（完全看不见）
 	if def == null or (_sprite != null and def.texture != null):
 		return                  # 有图在显示，不画兜底块

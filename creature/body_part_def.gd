@@ -28,8 +28,6 @@ extends Resource
 @export var grasp_label: String = ""
 @export var grasp_texture: Texture2D
 @export var grasp_flip_h: bool = false
-## 相对宿主身体图片的尺寸，原点在图片中心。
-@export var grasp_offset: Vector2 = Vector2.ZERO
 
 func is_limb() -> bool:
 	return not limb_types.is_empty()

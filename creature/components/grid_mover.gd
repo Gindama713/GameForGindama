@@ -66,13 +66,15 @@ func free_directions() -> Array[Vector2i]:
 
 ## 尝试朝 offset 方向走一格；成功返回 true。
 func try_step(offset: Vector2i) -> bool:
+	if not DIRS.has(offset):
+		return false
 	if not can_move():
 		return false
 	if not is_cell_free(creature.coord + offset):
 		return false
 	# ⚠ 显式标类型：`creature` 在组件基类里是 `Node`，`move_to()` 的返回值是 Variant，
 	#   用 `:=` 会 Parse Error（事实文档 §2.4 坑 7，本项目已复发多次）。
-	var ok: bool = creature.move_to(creature.coord + offset)
+	var ok: bool = creature.move_to(creature.coord + offset, true)
 	if ok:
 		_walk_glow = WALK_GLOW      # 点亮"走路"档（协议 8），见 WALK_GLOW
 	return ok

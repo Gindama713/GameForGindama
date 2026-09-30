@@ -12,4 +12,3 @@ limb_types = Array[String](["grasp"])
 category = "arm"
 grasp_label = "右手"
 grasp_texture = ExtResource("2_hand")
-grasp_offset = Vector2(0.46, 0.25)

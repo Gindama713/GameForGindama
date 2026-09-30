@@ -46,7 +46,9 @@ func _run() -> void:
 	probe.free()
 	if not _require(setup_ok, "组件初始化仍依赖排列顺序"):
 		return
-	if not _check_hands(player, bag):
+	if not _check_hand_slots(player, bag):
+		return
+	if not await _check_smooth_step(player, mover):
 		return
 	var objects: Array[WorldObject] = field.all_objects()
 	var counts: Dictionary = {}
@@ -261,7 +263,7 @@ func _run() -> void:
 			and String(entries.back()["text"]).contains(flower_item.display_name),
 			"E 采花没有同步世界、物品和提示"):
 		return
-	if not _check_hands(player, bag):
+	if not _check_hand_slots(player, bag):
 		return
 	# 点玩家脚下的石头也能拾取，不能先被生物的点击入口截走。
 	if not _require(player.move_to(small_rock.coord), "无法站在小石头上"):
@@ -271,7 +273,7 @@ func _run() -> void:
 			and field.object_at(small_rock.coord) == null and inventory.used_count() == 2,
 			"左键直接点击石头未拾取，或超出双手"):
 		return
-	if not _check_hands(player, bag):
+	if not _check_hand_slots(player, bag):
 		return
 	var next_flower: WorldObject = null
 	for object in field.all_objects():
@@ -302,7 +304,7 @@ func _run() -> void:
 	if not _require(inventory.used_count() == 1 and inventory.count(small_rock.definition.gather_item) == 0
 			and field.all_objects().size() == count_before + 1, "放下未还原世界物品或腾出手"):
 		return
-	if not _check_hands(player, bag):
+	if not _check_hand_slots(player, bag):
 		return
 	var dropped: WorldObject = null
 	for object in field.all_objects():
@@ -359,7 +361,7 @@ func _run() -> void:
 	field.clear()
 	if not _require((GridManager.get("_terrain_exclusions") as Dictionary).is_empty(), "地物清除后仍然禁止草扩散"):
 		return
-	print("world_object_smoke: PASS counts=", counts, " seed, routes, terrain, mouse/E, hand textures/mirroring/drop, component setup, rendered Y sorting")
+	print("world_object_smoke: PASS counts=", counts, " seed, routes, terrain, mouse/E, inventory hands/drop, smooth steps, component setup, rendered Y sorting")
 	get_tree().quit()
 
 
@@ -379,34 +381,79 @@ func _click_world(coord: Vector2i, camera: Camera2D) -> void:
 	TimeSystem.paused = true
 
 
-func _check_hands(player: Creature, panel: PanelContainer) -> bool:
+func _check_hand_slots(player: Creature, panel: PanelContainer) -> bool:
 	var inventory: Inventory = player.get_component(Inventory) as Inventory
-	var hands: Node2D = player.get_node("Sprite2D/Hands") as Node2D
-	var views: Dictionary = hands.get("_views")
 	var body_sprite: Sprite2D = player.get_node("Sprite2D") as Sprite2D
 	if not _require(is_zero_approx(body_sprite.position.y + body_sprite.texture.get_height() * body_sprite.scale.y * 0.5),
 			"身体缩放后没有保持脚下接地点"):
 		return false
 	var rows: VBoxContainer = panel.get("_list") as VBoxContainer
 	var slots: Array[Dictionary] = inventory.hand_slots()
-	if not _require(views.size() == slots.size() and rows.get_child_count() == slots.size(), "双手视图数量不匹配"):
+	if not _require(not body_sprite.has_node("Hands") and rows.get_child_count() == slots.size(), "角色仍有多余的手部精灵，或物品栏缺少双手格"):
 		return false
 	for i in slots.size():
 		var part: BodyPart = slots[i]["part"] as BodyPart
 		var item: ItemDef = slots[i]["item"] as ItemDef
 		var expected: Texture2D = item.icon if item != null else part.def.grasp_texture
-		var sprite: Sprite2D = views[part] as Sprite2D
 		var icon: TextureRect = rows.get_child(i).get_child(0) as TextureRect
 		var label: Label = rows.get_child(i).get_child(1) as Label
-		if not _require(expected != null and sprite.texture == expected and icon.texture == expected
-				and sprite.flip_h == part.def.grasp_flip_h and icon.flip_h == part.def.grasp_flip_h
-				and label.text.begins_with(part.def.grasp_label)
-				and sprite.position == part.def.grasp_offset * player.def.texture.get_size(), "空手/持物图片、左右朝向或名称不同步"):
+		var drop: Button = rows.get_child(i).get_child(2) as Button
+		if not _require(expected != null and icon.texture == expected
+				and icon.flip_h == part.def.grasp_flip_h
+				and label.text.begins_with(part.def.grasp_label) and drop.disabled == (item == null),
+				"物品栏空手/持物图片、左右朝向、名称或放下状态不同步"):
 			return false
 	var first: BodyPart = slots[0]["part"] as BodyPart
 	var second: BodyPart = slots[1]["part"] as BodyPart
-	return _require(first.def.grasp_offset.x < 0 and second.def.grasp_offset.x > 0
-			and first.def.grasp_flip_h != second.def.grasp_flip_h, "左右手位置或镜像相同")
+	return _require(first.def.grasp_label != second.def.grasp_label
+			and first.def.grasp_flip_h != second.def.grasp_flip_h, "物品栏左右手名称或镜像相同")
+
+
+func _check_smooth_step(player: Creature, mover: GridMover) -> bool:
+	var origin: Vector2i = player.coord
+	var visual_origin: Vector2 = player.position
+	var initial_time: float = TimeSystem.elapsed
+	var directions: Array[Vector2i] = mover.free_directions()
+	if not _require(not directions.is_empty() and not mover.try_step(Vector2i.ONE), "无可走格，或允许斜向跨格"):
+		return false
+	var direction: Vector2i = directions[0]
+	if not _require(mover.try_step(direction) and player.coord == origin + direction
+			and player.position == visual_origin and GridManager.cell_at(player.coord.x, player.coord.y).content == player
+			and GridManager.cell_at(origin.x, origin.y).content == null, "迈步时逻辑占格与画面位置没有分离"):
+		return false
+	await get_tree().process_frame
+	if not _require(player.position == visual_origin, "暂停时画面仍在移动"):
+		return false
+	var body_sprite: Sprite2D = player.get_node("Sprite2D") as Sprite2D
+	var visual_grid: Vector2i = GridManager.grid.world_to_grid(body_sprite.global_position)
+	var selection: Array[Node] = []
+	EventBus.creature_clicked.connect(func(target: Node) -> void: selection.append(target), CONNECT_ONE_SHOT)
+	var click: InputEventMouseButton = InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = get_viewport().canvas_transform * body_sprite.global_position
+	player._unhandled_input(click)
+	if not _require(visual_grid != player.coord and selection == [player], "移动中点击仍依据新逻辑格，未命中画面中的生物"):
+		return false
+	var first_duration: float = float(player.get("_visual_duration"))
+	TimeSystem.elapsed += first_duration * 0.5
+	player.call("_process", 0.0)
+	var halfway: Vector2 = player.position
+	var destination: Vector2 = GridManager.grid.grid_to_world(player.coord) + Vector2(0.5, 1.0) * Grid.CELL_SIZE
+	if not _require(halfway.distance_to(visual_origin.lerp(destination, 0.5)) < 0.01, "移动没有平滑经过半格"):
+		return false
+	# 下一步来得更快时从当前位置接续，不能弹回上一格或瞬移到新格。
+	if not _require(mover.try_step(-direction) and player.position == halfway and player.coord == origin
+			and float(player.get("_visual_duration")) <= first_duration * 0.5 + 0.001,
+			"快速反向迈步发生画面跳变，或动画没有跟上实际步频"):
+		return false
+	TimeSystem.elapsed += float(player.get("_visual_duration"))
+	player.call("_process", 0.0)
+	if not _require(player.position == visual_origin and not player.is_processing(), "动画结束后没有回到目标格或停止逐帧处理"):
+		return false
+	TimeSystem.elapsed = initial_time
+	print("smooth grid step: occupied destination immediately, paused, halfway, reversed without a snap")
+	return true
 
 
 func _check_occlusion(game: Node2D, player: Creature, layer: Node2D, camera: Camera2D) -> bool:
@@ -440,18 +487,14 @@ func _check_occlusion(game: Node2D, player: Creature, layer: Node2D, camera: Cam
 			and measurements[2] > 0 and measurements[3] >= measurements[2] * 0.98, "树后没有遮挡、或树前仍被遮挡：%s" % [measurements]):
 		return false
 	player.modulate = Color.WHITE
-	# 空手预览，验证两个手掌确实显示在身体两侧。
-	var inventory: Inventory = player.get_component(Inventory) as Inventory
-	for i in inventory.hand_slots().size():
-		inventory.take_from_hand(i)
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var preview_dir: String = ProjectSettings.globalize_path("res://").path_join(".godot")
-	get_viewport().get_texture().get_image().save_png(preview_dir.path_join("hands-tree-front.png"))
+	get_viewport().get_texture().get_image().save_png(preview_dir.path_join("creature-tree-front.png"))
 	player.position = tree.position + Vector2(0, -Grid.CELL_SIZE * 0.5)
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png(preview_dir.path_join("hands-tree-behind.png"))
+	get_viewport().get_texture().get_image().save_png(preview_dir.path_join("creature-tree-behind.png"))
 	player.position = original_position
 	print("rendered Y sorting: uncovered/covered behind, front = ", measurements)
 	return true
