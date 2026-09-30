@@ -38,16 +38,24 @@ var _pan_start := Vector2.ZERO
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	clip_contents = true
 	visible = false
 	TimeSystem.tick.connect(_on_tick)
+	get_parent().resized.connect(_fit_view)
 
 ## 打开时重建（反映"此刻"的世界）；打开期间每 tick 刷新活体大小（实时长大）。
 func open(c: Creature) -> void:
 	focus = c
 	_zoom = 1.0
 	_pan = Vector2.ZERO
-	_layout()
 	visible = true
+	_fit_view()
+
+func _fit_view() -> void:
+	if not visible or focus == null:
+		return
+	_layout()
+	position = ((get_parent() as Control).size - size) * 0.5
 	queue_redraw()
 
 func close() -> void:
@@ -251,7 +259,8 @@ func _layout() -> void:
 			for k in kids:
 				_edges.append([Vector2(k["rect"].position.x + NODE * 0.5, bar_y), _top_of(k)])
 
-	size = Vector2(CANVAS_W, y_k + NODE + PAD + 20)
+	var available := (get_parent() as Control).size - Vector2.ONE * 16.0
+	size = Vector2(minf(CANVAS_W, available.x), minf(y_k + NODE + PAD + 20, available.y))
 	custom_minimum_size = size
 
 func _cx_of(n: Dictionary) -> float:

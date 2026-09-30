@@ -55,6 +55,8 @@ var _dragging := false
 var _drag_start_mouse := Vector2.ZERO
 var _drag_start_pos := Vector2.ZERO
 var _tree: FamilyTree = null
+var _scroll: ScrollContainer
+var _content: VBoxContainer
 
 func _ready() -> void:
 	_build()
@@ -63,14 +65,23 @@ func _ready() -> void:
 	EventBus.creature_removed.connect(_on_removed)   # 清屏移除 → 关面板（不再靠 is_instance_valid 兜底）
 	TimeSystem.tick.connect(_on_tick)
 	position = Vector2(32, 104)   # 初始位置（左侧；可拖动）
+	get_parent().resized.connect(_fit_to_canvas)
+	resized.connect(_keep_on_screen)
+	_content.minimum_size_changed.connect(_fit_to_canvas)
+	_fit_to_canvas()
 	# 族谱树**懒创建**（点「族谱」时才 new+add_child）：_ready 里 add_child 会因
 	# "Parent node is busy setting up children" 失败，故不在这里建。
 	hide()
 
 func _build() -> void:
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.follow_focus = true
+	add_child(_scroll)
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 4)
-	add_child(vb)
+	_scroll.add_child(vb)
+	_content = vb
 
 	# 标题栏（拖动区）
 	_title_bar = HBoxContainer.new()
@@ -172,11 +183,11 @@ func _make_cell(name_text: String, with_status: bool) -> Dictionary:
 func _on_title_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		_dragging = event.pressed
-		_drag_start_mouse = event.global_position
+		_drag_start_mouse = get_global_mouse_position()
 		_drag_start_pos = position
 	elif event is InputEventMouseMotion and _dragging:
-		var new_pos: Vector2 = _drag_start_pos + (event.global_position - _drag_start_mouse)
-		var vp := get_viewport_rect().size
+		var new_pos: Vector2 = _drag_start_pos + (get_global_mouse_position() - _drag_start_mouse)
+		var vp := (get_parent() as Control).size
 		# 允许拖出一点，但标题栏永远留在屏幕内（面板不会拖丢找不回来）
 		new_pos.x = clampf(new_pos.x, -size.x + 60.0, vp.x - 60.0)
 		new_pos.y = clampf(new_pos.y, 0.0, vp.y - 40.0)
@@ -202,6 +213,22 @@ func _on_clicked(c: Node) -> void:
 	_creature = c as Creature
 	_rebuild()
 	show()
+	_keep_on_screen()
+
+func _keep_on_screen() -> void:
+	var available := (get_parent() as Control).size
+	if available.x <= 0.0 or available.y <= 0.0:
+		return
+	position.x = clampf(position.x, 0.0, maxf(available.x - size.x, 0.0))
+	position.y = clampf(position.y, 0.0, maxf(available.y - size.y, 0.0))
+
+func _fit_to_canvas() -> void:
+	var available := (get_parent() as Control).size
+	if available.x <= 0.0 or available.y <= 0.0:
+		return
+	size = Vector2(minf(_content.get_combined_minimum_size().x + 16.0, available.x - 16.0),
+		minf(_content.get_combined_minimum_size().y + 16.0, available.y - 16.0))
+	_keep_on_screen()
 
 ## 选中的生物死了 → 重建一次，切成尸体视图。
 ## （视图形态由「唯一事实」is_alive() 决定，不靠每帧乱切 visible。）
@@ -341,9 +368,4 @@ func _on_open_tree() -> void:
 		_tree = FamilyTree.new()
 		if get_parent() != null:
 			get_parent().add_child(_tree)
-	# 居中显示 + 置顶，保证一定看得见
-	var vp := get_viewport()
-	if vp != null:
-		var vs := vp.get_visible_rect().size
-		_tree.position = Vector2(maxf((vs.x - 560) * 0.5, 8), maxf((vs.y - 480) * 0.5, 8))
 	_tree.open(_creature)

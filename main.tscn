@@ -12,11 +12,13 @@
 [ext_resource type="Script" path="res://ui/player_hud.gd" id="11_hud"]
 [ext_resource type="Script" path="res://ui/player_panel.gd" id="12_panel"]
 [ext_resource type="Script" path="res://world/presentation/grass_layer.gd" id="13_grass"]
+[ext_resource type="Script" path="res://ui/scaled_ui_layer.gd" id="14_seu75"]
 [ext_resource type="Script" path="res://creature/player/sleep_director.gd" id="14_sleepdir"]
 [ext_resource type="Script" path="res://ui/sleep_fade.gd" id="15_fade"]
 [ext_resource type="Script" path="res://ui/sensation_feed.gd" id="15_vivmo"]
 [ext_resource type="Material" path="res://ui/sleep_fade.tres" id="16_fade_mat"]
 [ext_resource type="Script" path="res://ui/inventory_panel.gd" id="23_qsp4k"]
+[ext_resource type="Script" path="res://ui/display_settings_menu.gd" id="25_htxhm"]
 
 [node name="Main" type="Node2D" unique_id=1636290694]
 y_sort_enabled = true
@@ -45,41 +47,63 @@ z_index = 1
 script = ExtResource("9_cam")
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=519415202]
+layer = 2
+script = ExtResource("14_seu75")
 
-[node name="NightOverlay" type="ColorRect" parent="UI" unique_id=188996031]
-script = ExtResource("8_night")
+[node name="Canvas" type="Control" parent="UI" unique_id=2129615266]
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
 
-[node name="SleepFade" type="ColorRect" parent="UI" unique_id=1912569714]
-material = ExtResource("16_fade_mat")
-script = ExtResource("15_fade")
-
-[node name="CreatureInspector" type="PanelContainer" parent="UI" unique_id=623996217]
+[node name="CreatureInspector" type="PanelContainer" parent="UI/Canvas" unique_id=623996217]
+layout_mode = 0
 script = ExtResource("3_inspector")
 
-[node name="Minimap" type="Control" parent="UI" unique_id=743742393]
-layout_mode = 3
+[node name="Minimap" type="Control" parent="UI/Canvas" unique_id=743742393]
 anchors_preset = 0
 script = ExtResource("5_minimap")
 
-[node name="TimeDisplay" type="Label" parent="UI" unique_id=1966627767]
+[node name="TimeDisplay" type="Label" parent="UI/Canvas" unique_id=1966627767]
+layout_mode = 0
 script = ExtResource("7_time")
 
-[node name="PlayerHud" type="Control" parent="UI" unique_id=1646336628]
-layout_mode = 3
+[node name="PlayerHud" type="Control" parent="UI/Canvas" unique_id=1646336628]
 anchors_preset = 0
 script = ExtResource("11_hud")
 
-[node name="PlayerPanel" type="Control" parent="UI" unique_id=2082326877]
-layout_mode = 3
+[node name="PlayerPanel" type="Control" parent="UI/Canvas" unique_id=2082326877]
 anchors_preset = 0
 script = ExtResource("12_panel")
 
-[node name="SensationFeed" type="Control" parent="UI" unique_id=1311954121]
-layout_mode = 3
+[node name="SensationFeed" type="Control" parent="UI/Canvas" unique_id=1311954121]
 anchors_preset = 0
 script = ExtResource("15_vivmo")
 
-[node name="Inventory" type="PanelContainer" parent="UI" unique_id=223284102]
+[node name="Inventory" type="PanelContainer" parent="UI/Canvas" unique_id=223284102]
+layout_mode = 0
 script = ExtResource("23_qsp4k")
 
-[connection signal="drop_requested" from="UI/Inventory" to="WorldObjects/Interaction" method="drop_hand"]
+[node name="Effects" type="CanvasLayer" parent="." unique_id=535297120]
+
+[node name="NightOverlay" type="ColorRect" parent="Effects" unique_id=188996031]
+script = ExtResource("8_night")
+
+[node name="SleepFade" type="ColorRect" parent="Effects" unique_id=1912569714]
+material = ExtResource("16_fade_mat")
+script = ExtResource("15_fade")
+
+[node name="SettingsUI" type="CanvasLayer" parent="." unique_id=273921781]
+layer = 4
+script = ExtResource("14_seu75")
+
+[node name="Canvas" type="Control" parent="SettingsUI" unique_id=109348909]
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
+
+[node name="SettingsMenu" type="Control" parent="SettingsUI/Canvas" unique_id=74527367]
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("25_htxhm")
+
+[connection signal="drop_requested" from="UI/Canvas/Inventory" to="WorldObjects/Interaction" method="drop_hand"]

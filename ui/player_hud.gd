@@ -124,7 +124,7 @@ func _fit_to_screen() -> void:
 	await get_tree().process_frame
 	if _panel == null:
 		return
-	var vp := get_viewport_rect().size
+	var vp := (get_parent() as Control).size
 	# 面板高度以**实际内容**为准（容器最小尺寸），不靠父控件
 	var h := maxf(_panel.get_combined_minimum_size().y, _panel.size.y)
 	# 面板锚左下角，所以往上推 = 给一个负的 offset_top，同时 offset_bottom 补足高度

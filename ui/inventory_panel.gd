@@ -23,13 +23,13 @@ func _ready() -> void:
 	hint.add_theme_font_size_override("font_size", 11)
 	column.add_child(hint)
 	EventBus.player_spawned.connect(_bind)
-	get_viewport().size_changed.connect(_layout)
+	get_parent().resized.connect(_layout)
 	_layout()
 	hide()
 
 
 func _layout() -> void:
-	position = Vector2(maxf(8.0, get_viewport_rect().size.x - 228.0), 144.0)
+	position = Vector2(maxf(8.0, (get_parent() as Control).size.x - 228.0), 144.0)
 	custom_minimum_size.x = 220.0
 
 

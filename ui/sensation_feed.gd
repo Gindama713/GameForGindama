@@ -36,7 +36,7 @@ func _ready() -> void:
 	_rng.randomize()
 	_build()
 	_layout()
-	get_viewport().size_changed.connect(_layout)
+	get_parent().resized.connect(_layout)
 	EventBus.player_spawned.connect(_bind)
 	EventBus.creature_moved.connect(_on_creature_moved)
 	EventBus.creature_died.connect(_on_creature_died)
@@ -98,12 +98,13 @@ func _build() -> void:
 
 
 func _layout() -> void:
-	var screen: Vector2 = get_viewport_rect().size
+	var screen: Vector2 = (get_parent() as Control).size
 	var left: float = minf(260.0, maxf(236.0, screen.x * 0.22))
 	var right: float = screen.x - 316.0
 	var room: float = right - left
-	var width: float = minf(620.0, room) if room >= 360.0 else minf(600.0, screen.x - 16.0)
-	var x: float = left + (room - width) * 0.5 if room >= 360.0 else (screen.x - width) * 0.5
+	var narrow := screen.x < 800.0
+	var width: float = minf(620.0, room) if room >= 360.0 else minf(600.0, screen.x - (256.0 if narrow else 16.0))
+	var x: float = left + (room - width) * 0.5 if room >= 360.0 else (8.0 if narrow else (screen.x - width) * 0.5)
 	var bottom: float = -8.0 if room >= 360.0 else -140.0
 	var height: float = minf(340.0, screen.y * 0.55) if _history != null and _history.visible else 112.0
 	anchor_left = 0.0

@@ -77,6 +77,8 @@ const SEV_COLOR := {
 var _player: Creature = null
 
 var _panel: PanelContainer
+var _scroll: ScrollContainer
+var _content: MarginContainer
 var _portrait: TextureRect
 var _portrait_box: Control        # 定位容器（提供 PORTRAIT_H 高的参照系）
 var _outline: Control             # 轮廓描边层（自绘，叠在全身照上；问题4）
@@ -183,6 +185,10 @@ func _build() -> void:
 	_panel.mouse_filter = Control.MOUSE_FILTER_STOP   # 面板本体吃输入（不穿透点到世界）
 	_panel.custom_minimum_size.x = PANEL_W
 	add_child(_panel)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.follow_focus = true
+	_panel.add_child(_scroll)
 
 	# —— 外层边距（文字不贴面板边框）——
 	# 关闭 × 的位置**不能交给 HBox 排版**（会被标题/时钟挤到中间）；见下方 overlay 说明。
@@ -191,7 +197,10 @@ func _build() -> void:
 	pad.add_theme_constant_override("margin_right", 10)
 	pad.add_theme_constant_override("margin_top", 8)
 	pad.add_theme_constant_override("margin_bottom", 10)
-	_panel.add_child(pad)
+	_scroll.add_child(pad)
+	_content = pad
+	get_parent().resized.connect(_fit_panel_height)
+	_content.minimum_size_changed.connect(_fit_panel_height)
 
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 6)
@@ -313,6 +322,17 @@ func _build() -> void:
 	drow.add_child(_detail_bar)
 	_detail_lbl = _label("", FONT_SIZE)
 	drow.add_child(_detail_lbl)
+	_fit_panel_height()
+
+func _fit_panel_height() -> void:
+	if _panel == null or _content == null:
+		return
+	var available: float = (get_parent() as Control).size.y - MARGIN * 2.0
+	if available <= 0.0:
+		return
+	_panel.size.x = maxf(PANEL_W, _content.get_combined_minimum_size().x + 16.0)
+	_panel.size.y = minf(_content.get_combined_minimum_size().y + 16.0, available)
+	_clamp_panel()
 
 ## 按 LAYOUT.part_layout 建热区（叠在全身照上）。
 ##
@@ -400,19 +420,18 @@ func _on_title_gui_input(ev: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed:
 				_dragging = true
-				_drag_off = mb.global_position - _panel.global_position
+				_drag_off = _panel.get_global_mouse_position() - _panel.global_position
 				_kill_tween()
 			else:
 				_dragging = false
 				_manual_pos = true
 	elif ev is InputEventMouseMotion and _dragging:
-		var m := ev as InputEventMouseMotion
-		_panel.global_position = m.global_position - _drag_off
+		_panel.global_position = _panel.get_global_mouse_position() - _drag_off
 		_clamp_panel()
 
 ## 让面板至少留一部分在屏幕内（拖不丢）。
 func _clamp_panel() -> void:
-	var vp := get_viewport_rect().size
+	var vp := (get_parent() as Control).size
 	var p := _panel.global_position
 	p.x = clampf(p.x, -PANEL_W + 80.0, vp.x - 60.0)
 	p.y = clampf(p.y, 0.0, maxf(vp.y - 40.0, 0.0))

@@ -66,7 +66,7 @@ var player: Creature = null
 
 func _ready() -> void:
 	var interaction: WorldObjectInteraction = _objects.get_node("Interaction") as WorldObjectInteraction
-	interaction.action_failed.connect($UI/SensationFeed._on_action_failed)
+	interaction.action_failed.connect($UI/Canvas/SensationFeed._on_action_failed)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = WorldSeed.value ^ SPAWN_RNG_SALT
 

@@ -25,15 +25,12 @@ Log="*res://common/log.gd"
 DefValidator="*res://common/def_validator.gd"
 GrassField="*res://world/grass/grass_field.gd"
 FamilyRegistry="*res://creature/family_registry.gd"
+DisplaySettings="*res://ui/display_settings.gd"
 
 [display]
 
-window/size/viewport_width=1280
-window/size/viewport_height=768
-window/size/borderless=true
-window/size/window_width_override=1280
-window/size/window_height_override=768
-window/stretch/mode="canvas_items"
+window/size/viewport_width=1600
+window/size/viewport_height=900
 
 [gui]
 

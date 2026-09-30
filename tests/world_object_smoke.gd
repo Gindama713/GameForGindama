@@ -28,13 +28,13 @@ func _run() -> void:
 	TimeSystem.paused = true
 	var field: WorldObjectField = game.get_node("WorldObjects") as WorldObjectField
 	var layer: Node2D = field.get_node("ObjectLayer") as Node2D
-	var inspector: WorldObjectInspector = field.get_node("UI/Inspector") as WorldObjectInspector
+	var inspector: WorldObjectInspector = field.get_node("UI/Canvas/Inspector") as WorldObjectInspector
 	var player: Creature = game.get("player") as Creature
 	var mover: GridMover = player.get_component(GridMover) as GridMover
 	var interaction: WorldObjectInteraction = field.get_node("Interaction") as WorldObjectInteraction
 	var inventory: Inventory = player.get_component(Inventory) as Inventory
-	var bag: PanelContainer = game.get_node("UI/Inventory") as PanelContainer
-	var feed: Control = game.get_node("UI/SensationFeed") as Control
+	var bag: PanelContainer = game.get_node("UI/Canvas/Inventory") as PanelContainer
+	var feed: Control = game.get_node("UI/Canvas/SensationFeed") as Control
 	# 定义允许依赖组件排在后面；setup 时仍必须能查询它。
 	var probe_script: Script = SetupProbe.new().get_script() as Script
 	var probe: Creature = Creature.new()

@@ -9,8 +9,8 @@ func _run() -> void:
 	var game: Node2D = load("res://main.tscn").instantiate() as Node2D
 	add_child(game)
 	await get_tree().process_frame
-	var feed: Control = game.get_node("UI/SensationFeed") as Control
-	var hud: Control = game.get_node("UI/PlayerHud") as Control
+	var feed: Control = game.get_node("UI/Canvas/SensationFeed") as Control
+	var hud: Control = game.get_node("UI/Canvas/PlayerHud") as Control
 	var player: Creature = game.get("player") as Creature
 	if not _require(feed != null and feed.visible and player != null, "感受面板没有绑定玩家"):
 		return

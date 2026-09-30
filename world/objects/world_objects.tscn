@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://world/objects/world_object_def.gd" id="5"]
 [ext_resource type="Script" path="res://world/presentation/object_layer.gd" id="6"]
 [ext_resource type="Script" path="res://ui/world_object_inspector.gd" id="7"]
+[ext_resource type="Script" path="res://ui/scaled_ui_layer.gd" id="8_4yn5h"]
 [ext_resource type="Script" path="res://world/objects/world_object_interaction.gd" id="10_5jpgj"]
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_8oase"]
@@ -25,9 +26,16 @@ y_sort_enabled = true
 script = ExtResource("6")
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=1708798044]
-layer = 2
+layer = 3
+script = ExtResource("8_4yn5h")
 
-[node name="Inspector" type="PanelContainer" parent="UI" unique_id=620124501]
+[node name="Canvas" type="Control" parent="UI" unique_id=785789652]
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
+
+[node name="Inspector" type="PanelContainer" parent="UI/Canvas" unique_id=620124501]
+layout_mode = 0
 script = ExtResource("7")
 
 [node name="Interaction" type="Node" parent="." unique_id=39976169]

@@ -2,7 +2,7 @@ class_name WorldObjectInspector
 extends PanelContainer
 
 ## 查询世界状态，不从 Sprite 推断地物；场景内连接本地 Field。
-@onready var _field: WorldObjectField = get_parent().get_parent() as WorldObjectField
+@onready var _field: WorldObjectField = get_parent().get_parent().get_parent() as WorldObjectField
 var _selected: WorldObject
 var _details: Label
 var _growth_row: HBoxContainer
@@ -52,13 +52,13 @@ func _ready() -> void:
 	_field.object_changed.connect(_on_changed)
 	_field.object_removed.connect(_on_removed)
 	EventBus.creature_clicked.connect(_on_creature_clicked)
-	get_viewport().size_changed.connect(_layout)
+	get_parent().resized.connect(_layout)
 	_layout()
 	hide()
 
 
 func _layout() -> void:
-	position = Vector2(minf(344.0, maxf(8.0, get_viewport_rect().size.x - 220.0)), 80.0)
+	position = Vector2(minf(344.0, maxf(8.0, (get_parent() as Control).size.x - 220.0)), 80.0)
 	custom_minimum_size.x = 200.0
 
 
