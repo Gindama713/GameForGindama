@@ -1,6 +1,8 @@
 class_name Sprint
 extends CreatureComponent
 
+const SKILL_ID := &"running"
+
 ## 疾跑组件（2026-09-20 建 · 2026-09-21 按用户口径重做为**两条独立的条**）。
 ##
 ## 【一句话】跑起来速度 ×2，代价是**体力**（一条短促的爆发资源）；体力见底就跑不动，喘一会儿才回得来。
@@ -152,6 +154,16 @@ func setup(host: Node) -> void:
 
 func after_setup() -> void:
 	_stamina = stamina_max()   # Needs 已完成初始化，开局体力读取实际上限。
+	var mover: GridMover = creature.get_component(GridMover) as GridMover
+	if mover != null:
+		mover.step_completed.connect(_on_step_completed)
+
+func _on_step_completed() -> void:
+	if not _running:
+		return
+	var skills: Skills = creature.get_component(Skills) as Skills
+	if skills != null:
+		skills.practice(SKILL_ID)
 
 # ---------------- 生命周期 ----------------
 

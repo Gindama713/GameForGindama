@@ -33,7 +33,7 @@ func _run() -> void:
 	var mover: GridMover = player.get_component(GridMover) as GridMover
 	var interaction: WorldObjectInteraction = field.get_node("Interaction") as WorldObjectInteraction
 	var inventory: Inventory = player.get_component(Inventory) as Inventory
-	var bag: PanelContainer = game.get_node("UI/Canvas/Inventory") as PanelContainer
+	var bag: PanelContainer = game.get_node("UI/Canvas/HandsHud") as PanelContainer
 	var feed: Control = game.get_node("UI/Canvas/SensationFeed") as Control
 	# 定义允许依赖组件排在后面；setup 时仍必须能查询它。
 	var probe_script: Script = SetupProbe.new().get_script() as Script
@@ -49,6 +49,48 @@ func _run() -> void:
 	if not _check_hand_slots(player, bag):
 		return
 	if not await _check_smooth_step(player, mover):
+		return
+	var skills: Skills = player.get_component(Skills) as Skills
+	if not _require(skills != null and player.def.skill_catalog.skills.size() == 12
+			and skills.level(Sprint.SKILL_ID) == 0 and skills.experience(&"gathering") == 0.0,
+			"主角没有独立的十二项初始技能"):
+		return
+	for definition: SkillDef in player.def.skill_catalog.skills:
+		if not _require(skills.level(definition.id) == 0 and skills.experience(definition.id) == 0.0,
+				"技能没有从零开始：%s" % definition.id):
+			return
+	skills.practice(&"knowledge", 100000.0)
+	var pig_skills: Skills = (game.get_node("Creatures").get_child(0) as Creature).get_component(Skills) as Skills
+	var missing_skills_def := CreatureDef.new()
+	missing_skills_def.skill_catalog = player.def.skill_catalog
+	if not _require(missing_skills_def.validate().has("每个生物都需要 Skills 组件"),
+			"新物种漏配技能没有在定义校验中报错"):
+		return
+	if not _require(pig_skills != null and pig_skills.creature.def.skill_catalog == player.def.skill_catalog,
+			"玩家与猪没有复用同一技能定义"):
+		return
+	for id: StringName in SkillDef.ATTRIBUTE_NAMES:
+		if not _require(skills.attributes.has(id) and pig_skills.attributes.has(id),
+				"不同生物缺少共同属性：%s" % id):
+			return
+	if not _require(skills.level(&"knowledge") == Skills.MAX_LEVEL
+			and skills.experience(&"knowledge") == 0.0 and pig_skills.level(&"knowledge") == 0,
+			"等级超过 100，或生物间共享了技能经验"):
+		return
+	var running_before: float = skills.experience(Sprint.SKILL_ID)
+	var sprint: Sprint = player.get_component(Sprint) as Sprint
+	var run_direction: Vector2i = mover.free_directions()[0]
+	sprint.set("_running", true)
+	var ran: bool = mover.try_step(run_direction)
+	sprint.set("_running", false)
+	if not _require(ran and skills.experience(Sprint.SKILL_ID) > running_before
+			and mover.try_step(-run_direction), "成功跑过一格后没有增加跑步经验"):
+		return
+	if not _require(skills.experience_to_next(Sprint.SKILL_ID) == 10.0, "初级经验门槛错误"):
+		return
+	skills.practice(Sprint.SKILL_ID, 40.0)
+	if not _require(skills.level(Sprint.SKILL_ID) >= 1 and skills.experience_to_next(Sprint.SKILL_ID) > 10.0,
+			"跑步升级或递增经验门槛失效"):
 		return
 	var objects: Array[WorldObject] = field.all_objects()
 	var counts: Dictionary = {}
@@ -284,6 +326,8 @@ func _run() -> void:
 			part.hp = 0
 	if not _require(not interaction.gather(flower.coord) and inventory.free_hands() == 0, "失去抓握能力仍能采集"):
 		return
+	if not _require(skills.experience(&"gathering") == 0.0, "失败采集产生了经验"):
+		return
 	for part: BodyPart in original_hp:
 		part.hp = original_hp[part]
 	var hand: BodyPart = inventory.hand_slots()[0]["part"] as BodyPart
@@ -301,6 +345,7 @@ func _run() -> void:
 	if not _require(field.object_at(flower.coord) == null and GridManager.feature_at(flower.coord) == null
 			and not layer.has_node("Object_%d" % flower.id)
 			and inventory.count(flower_item) == 1
+			and skills.experience(&"gathering") > 0.0
 			and String(entries.back()["text"]).contains(flower_item.display_name),
 			"E 采花没有同步世界、物品和提示"):
 		return
@@ -310,9 +355,13 @@ func _run() -> void:
 	if not _require(player.move_to(small_rock.coord), "无法站在小石头上"):
 		return
 	await _click_world(small_rock.coord, camera)
+	var gathering_after_flower: float = skills.experience(&"gathering")
 	if not _require(inventory.count(small_rock.definition.gather_item) == 1
 			and field.object_at(small_rock.coord) == null and inventory.used_count() == 2,
 			"左键直接点击石头未拾取，或超出双手"):
+		return
+	if not _require(skills.experience(&"gathering") == gathering_after_flower,
+			"拾取石头错误地增加了采集经验"):
 		return
 	if not _check_hand_slots(player, bag):
 		return
@@ -326,19 +375,44 @@ func _run() -> void:
 	var count_before: int = field.all_objects().size()
 	await _click_world(next_flower.coord, camera)
 	if not _require(inventory.used_count() == 2 and field.object_at(next_flower.coord) == next_flower
+			and skills.experience(&"gathering") == gathering_after_flower
 			and field.all_objects().size() == count_before and layer.has_node("Object_%d" % next_flower.id)
 			and inspector.visible and (inspector.get("_hint") as Label).text.contains("空闲"),
 			"满手左键拾取删掉了地物，或没有解释容量限制"):
 		return
-	var bag_toggle: Button = bag.get("_toggle") as Button
-	bag_toggle.button_pressed = true
 	var bag_list: VBoxContainer = bag.get("_list") as VBoxContainer
 	await get_tree().process_frame
-	if not _require(bag.visible and bag_list.visible and bag_list.get_child_count() == 2,
+	if not _require(bag.visible and bag_list.get_child_count() == 2,
 			"面板没有显示两只手"):
 		return
+	var backpack := (game.get_node("UI/Canvas/PlayerPanel") as Control).get("_backpack_view") as BackpackView
+	var transfer_events: Array[String] = []
+	inventory.item_added.connect(func(_item: ItemDef, _amount: int) -> void: transfer_events.append("added"))
+	inventory.item_removed.connect(func(_item: ItemDef, _amount: int) -> void: transfer_events.append("removed"))
+	(game.get_node("UI/Canvas/PlayerPanel") as Control).call("_toggle_drawer", 1)
+	await get_tree().process_frame
+	var hand_rows := backpack.get("_hands") as VBoxContainer
+	var bag_rows := backpack.get("_bag") as VBoxContainer
+	(hand_rows.get_child(1).get_child(2) as Button).pressed.emit()
+	if not _require(inventory.used_count() == 1 and inventory.bag_used_count() == 1
+			and inventory.free_hands() == 1 and inventory.count(small_rock.definition.gather_item) == 1
+			and transfer_events.is_empty(), "收进背包没有腾出手，或触发了拾取/丢弃事件"):
+		return
+	(bag_rows.get_child(0).get_child(2) as Button).pressed.emit()
+	if not _require(inventory.used_count() == 2 and inventory.bag_used_count() == 0
+			and transfer_events.is_empty(), "从背包取出没有回到手中"):
+		return
 	# 用面板放下石头，再点检视按钮拿第二株花；最后两手各拿一朵花。
-	var drop: Button = bag_list.get_child(1).get_child(2) as Button
+	var drop: Button = bag_list.get_child(1).get_child(0).get_child(2) as Button
+	var frame := bag_list.get_child(1) as Control
+	var click := _left_click()
+	click.position = frame.get_global_transform_with_canvas() * (frame.size * 0.5)
+	get_viewport().push_input(click, true)
+	click.pressed = false
+	get_viewport().push_input(click, true)
+	await get_tree().process_frame
+	if not _require(drop.visible, "鼠标点击手持框没有打开操作"):
+		return
 	TimeSystem.paused = false
 	drop.pressed.emit()
 	TimeSystem.paused = true
@@ -363,8 +437,21 @@ func _run() -> void:
 		return
 	action.pressed.emit()
 	if not _require(inventory.used_count() == 2 and inventory.count(flower_item) == 2
+			and skills.experience(&"gathering") > gathering_after_flower
 			and not inventory.can_add(flower_item, 1) and field.object_at(next_flower.coord) == null,
 			"两手同类物品被合并成无限堆叠，或按钮未采集"):
+		return
+	var gathered_experience: float = skills.experience(&"gathering")
+	interaction.drop_hand(0)
+	var dropped_flower: WorldObject = null
+	for object in field.all_objects():
+		if (object.definition == flower.definition and object.dropped_by_creature
+				and absi(object.coord.x - player.coord.x) + absi(object.coord.y - player.coord.y) <= 1):
+			dropped_flower = object
+			break
+	if not _require(dropped_flower != null and interaction.gather(dropped_flower.coord)
+			and skills.experience(&"gathering") == gathered_experience,
+			"放下再捡起野花刷出了采集经验"):
 		return
 	var denied_count: int = field.all_objects().size()
 	key.pressed = true
@@ -437,18 +524,26 @@ func _check_hand_slots(player: Creature, panel: PanelContainer) -> bool:
 		var part: BodyPart = slots[i]["part"] as BodyPart
 		var item: ItemDef = slots[i]["item"] as ItemDef
 		var expected: Texture2D = item.icon if item != null else part.def.grasp_texture
-		var icon: TextureRect = rows.get_child(i).get_child(0) as TextureRect
-		var label: Label = rows.get_child(i).get_child(1) as Label
-		var drop: Button = rows.get_child(i).get_child(2) as Button
+		var column := rows.get_child(i).get_child(0)
+		var icon: TextureRect = column.get_child(0) as TextureRect
+		var label: Label = column.get_child(1) as Label
+		var drop: Button = column.get_child(2) as Button
 		if not _require(expected != null and icon.texture == expected
 				and icon.flip_h == part.def.grasp_flip_h
-				and label.text.begins_with(part.def.grasp_label) and drop.disabled == (item == null),
+				and label.text.begins_with(part.def.grasp_label) and drop.visible == (item != null and i == int(panel.get("_selected_hand"))),
 				"物品栏空手/持物图片、左右朝向、名称或放下状态不同步"):
 			return false
 	var first: BodyPart = slots[0]["part"] as BodyPart
 	var second: BodyPart = slots[1]["part"] as BodyPart
 	return _require(first.def.grasp_label != second.def.grasp_label
 			and first.def.grasp_flip_h != second.def.grasp_flip_h, "物品栏左右手名称或镜像相同")
+
+
+func _left_click() -> InputEventMouseButton:
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	return click
 
 
 func _check_smooth_step(player: Creature, mover: GridMover) -> bool:

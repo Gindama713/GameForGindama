@@ -61,7 +61,12 @@ func gather(coord: Vector2i) -> bool:
 		var restored: WorldObject = _field.add(object.definition, coord)
 		if restored != null:
 			restored.integrity = object.integrity
+			restored.dropped_by_creature = object.dropped_by_creature
 		return false
+	if not object.dropped_by_creature and object.definition.gather_skill != &"":
+		var skills: Skills = _player.get_component(Skills) as Skills
+		if skills != null:
+			skills.practice(object.definition.gather_skill)
 	return true
 
 
@@ -89,9 +94,12 @@ func drop_hand(hand_index: int) -> void:
 	nearby.append_array(GridMover.DIRS)
 	for direction in nearby:
 		var coord: Vector2i = _player.coord + direction
-		if _field.can_place(definition, coord) and _field.add(definition, coord) != null:
-			inventory.take_from_hand(hand_index)
-			return
+		if _field.can_place(definition, coord):
+			var dropped: WorldObject = _field.add(definition, coord)
+			if dropped != null:
+				dropped.dropped_by_creature = true
+				inventory.take_from_hand(hand_index)
+				return
 	action_failed.emit("身旁没有能放下物品的空地。")
 
 

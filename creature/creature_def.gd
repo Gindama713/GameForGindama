@@ -13,6 +13,10 @@ extends Resource
 @export var active_needs: Array[NeedDef] = []        # 激活的需求（数据驱动；空 = 无需求系统）
 @export var personality: PersonalityDef              # 物种脾气分布（数据驱动；空 = 性格全取中性 0.5）
 @export var life: LifeDef                            # 物种"一生"（年龄/成长/性别/繁殖）；空 = 不启用这套（向后兼容）
+@export var skill_catalog: SkillCatalog
+@export var attribute_base: Dictionary = {&"physique": 50.0, &"dexterity": 50.0, &"perception": 50.0, &"insight": 50.0, &"affinity": 50.0}
+@export_range(0.0, 50.0) var attribute_spread: float = 8.0
+@export var backpack_slots: int = 0
 @export var move_interval: float = 1.0               # 大脑决策间隔基数（秒），物种级（占位值，待调）
 
 ## 定义校验（CDDA 四阶段加载里 check_all 的最小落地）。
@@ -33,6 +37,17 @@ func validate() -> Array[String]:
 	_validate_components(errs)
 	if life != null:
 		errs.append_array(life.validate())
+	if not component_scripts.has(Skills):
+		errs.append("每个生物都需要 Skills 组件")
+	if skill_catalog == null:
+		errs.append("每个生物都需要 skill_catalog")
+	else:
+		errs.append_array(skill_catalog.validate())
+	for id: StringName in SkillDef.ATTRIBUTE_NAMES:
+		if not attribute_base.has(id) or float(attribute_base[id]) < 0.0 or float(attribute_base[id]) > 100.0:
+			errs.append("先天属性 %s 必须在 0 到 100 之间" % id)
+	if backpack_slots < 0:
+		errs.append("背包格数不能为负")
 	if move_interval <= 0.0:
 		errs.append("move_interval 必须 > 0（当前 %.2f；否则大脑每帧都在决策）" % move_interval)
 

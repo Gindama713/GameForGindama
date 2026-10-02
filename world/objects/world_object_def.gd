@@ -16,6 +16,7 @@ extends Resource
 @export var gather_item: ItemDef
 @export var gather_amount: int = 1
 @export var gather_action: String = ""
+@export var gather_skill: StringName = &""
 @export var blocks_movement: bool = false
 @export var max_integrity: int = 1
 @export var terrain_weights: Dictionary = {}
@@ -76,7 +77,7 @@ func validate() -> Array[String]:
 		errors.append_array(gather_item.validate())
 		if gather_amount <= 0 or gather_action.strip_edges().is_empty():
 			errors.append("采集需要数量和动作名称")
-	elif not gather_action.is_empty():
+	elif not gather_action.is_empty() or gather_skill != &"":
 		errors.append("采集动作缺少产物")
 	if terrain_weights.is_empty():
 		errors.append("terrain_weights 不能为空")

@@ -299,6 +299,9 @@ func _spawn_offspring(mother: Creature, father: Creature) -> int:
 		var cp: Personality = child.get_component(Personality) as Personality
 		if cp != null:
 			cp.inherit(mp, fp)
+		var child_skills: Skills = child.get_component(Skills) as Skills
+		if child_skills != null:
+			child_skills.inherit_attributes(mother.get_component(Skills) as Skills, father.get_component(Skills) as Skills)
 		var ca: Aging = child.get_component(Aging) as Aging
 		if ca != null and ma != null and fa != null:
 			var mean_life := (ma.lifespan_min + fa.lifespan_min) * 0.5

@@ -53,6 +53,8 @@
 [ext_resource type="Script" path="res://creature/components/grazing.gd" id="11_graze"]
 [ext_resource type="Script" path="res://creature/components/drinking.gd" id="12_drink"]
 [ext_resource type="Script" path="res://creature/components/sprint.gd" id="13_sprint"]
+[ext_resource type="Script" path="res://creature/skills/skills.gd" id="s_skills"]
+[ext_resource type="Resource" path="res://creature/skills/catalog.tres" id="s_catalog"]
 [ext_resource type="Script" path="res://creature/components/sleep.gd" id="16_sleep"]
 [ext_resource type="Script" path="res://creature/components/inventory.gd" id="17_inventory"]
 [ext_resource type="Script" path="res://creature/components/perception.gd" id="14_perc"]
@@ -77,12 +79,14 @@ texture = ExtResource("10_tex")
 map_color = Color(1, 0.85, 0.2, 1)
 personality = ExtResource("t_temp")
 life = ExtResource("t_life")
+skill_catalog = ExtResource("s_catalog")
+backpack_slots = 6
 ; 【移动速度（2026-09-20 三调，问题5）】
 ;   `move_interval` = 满速下**走一格要多少游戏秒**（PlayerBrain gate = move_interval / locomotion_speed）。
 ;   0.8 → **0.5**：加快 1.6 倍（用户要"走快点"，同时保留"残废/疲劳/幼老会变慢"的机制）。
 ;   ⚠ 不要靠"调 locomotion_speed"提速 —— 那是身体状态的聚合结果，改了会把"受伤减速"的差距一起压平。
 ;   提速只动这个**基数**，让所有状态按同一比例变快（受伤时依然明显慢于健康）。
 move_interval = 0.5
-component_scripts = Array[Script]([ExtResource("2_mover"), ExtResource("3_pbrain"), ExtResource("4_body"), ExtResource("5_needs"), ExtResource("6_persona"), ExtResource("14_perc"), ExtResource("7_conceal"), ExtResource("13_sprint"), ExtResource("15_thermal"), ExtResource("16_sleep"), ExtResource("8_aging"), ExtResource("9_lineage"), ExtResource("11_graze"), ExtResource("12_drink"), ExtResource("17_inventory")])
+component_scripts = Array[Script]([ExtResource("2_mover"), ExtResource("3_pbrain"), ExtResource("4_body"), ExtResource("5_needs"), ExtResource("6_persona"), ExtResource("14_perc"), ExtResource("7_conceal"), ExtResource("13_sprint"), ExtResource("s_skills"), ExtResource("15_thermal"), ExtResource("16_sleep"), ExtResource("8_aging"), ExtResource("9_lineage"), ExtResource("11_graze"), ExtResource("12_drink"), ExtResource("17_inventory")])
 body_parts = Array[BodyPartDef]([ExtResource("p_head"), ExtResource("p_ribcage"), ExtResource("p_arm_l"), ExtResource("p_arm_r"), ExtResource("p_leg_l"), ExtResource("p_leg_r")])
 active_needs = Array[NeedDef]([ExtResource("n_food"), ExtResource("n_water"), ExtResource("n_warmth"), ExtResource("n_fatigue")])

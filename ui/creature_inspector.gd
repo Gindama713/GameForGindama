@@ -46,6 +46,7 @@ var _parts_grid: GridContainer
 var _needs_grid: GridContainer
 var _personality_grid: GridContainer
 var _personality_section: VBoxContainer
+var _skill_list: SkillList
 var _state_lbl: Label
 var _part_rows: Array = []   # {part, bar, status}
 var _need_rows: Array = []   # {need, bar}
@@ -140,6 +141,10 @@ func _build() -> void:
 	_personality_section.add_child(_caption_row("性格", _personality_grid))
 	_state_lbl = _small_label("")
 	_personality_section.add_child(_state_lbl)
+	var skills_title := _small_label("技能 · 熟练度")
+	vb.add_child(skills_title)
+	_skill_list = SkillList.new()
+	vb.add_child(_skill_list)
 
 	var wound := Button.new(); wound.text = "调试：随机致伤"; wound.pressed.connect(_on_random_wound)
 	vb.add_child(wound)
@@ -284,6 +289,7 @@ func _rebuild() -> void:
 			_trait_rows.append({"id": tid, "bar": c["bar"], "value": c["status"]})
 	else:
 		var none2 := Label.new(); none2.text = "（无性格数据）"; _personality_grid.add_child(none2)
+	_skill_list.bind(_creature.get_component(Skills) as Skills)
 
 	_apply_form()
 	_refresh()
@@ -310,6 +316,7 @@ func _refresh() -> void:
 		_on_close()
 		return
 	_coord_lbl.text = "(%d, %d)" % [_creature.coord.x, _creature.coord.y]
+	_skill_list.refresh()
 
 	var body := _creature.get_component(Body) as Body
 	if body != null:

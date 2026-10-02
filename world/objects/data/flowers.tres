@@ -23,6 +23,7 @@ height_cells = 0.7
 region_density = SubResource("RegionDensity")
 gather_item = ExtResource("3")
 gather_action = "采摘"
+gather_skill = &"gathering"
 max_integrity = 3
 terrain_weights = {&"unknown": 1.0}
 nearby_terrains = Array[StringName]([&"grass", &"tall_grass"])

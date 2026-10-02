@@ -1,6 +1,8 @@
 class_name GridMover
 extends CreatureComponent
 
+signal step_completed
+
 ## 网格移动组件：只负责「能不能移」和「执行移动」。
 ## 往哪走不归它管 —— 那是大脑组件的事。移动逻辑与决策逻辑就此解耦。
 ##
@@ -77,6 +79,7 @@ func try_step(offset: Vector2i) -> bool:
 	var ok: bool = creature.move_to(creature.coord + offset, true)
 	if ok:
 		_walk_glow = WALK_GLOW      # 点亮"走路"档（协议 8），见 WALK_GLOW
+		step_completed.emit()
 	return ok
 
 ## 行动前置：问所有组件「允不允许移动」，全票通过才放行。

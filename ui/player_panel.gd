@@ -5,10 +5,9 @@ extends Control
 ## 【要解决什么】屏幕左下角的 PlayerHud 只够看血和需求；主角的**全身照 + 逐部位伤情**
 ##   需要一个更大的面板 —— 这才是"人"的视角（而不是"一只会动的棋子"）。
 ##
-## 【布局】锚定屏幕右缘的一整条（TOP_RIGHT → BOTTOM_RIGHT），面板本体在条内**右对齐**。
-##   滑出 = 把面板的 x 从"完全在屏外"缓动回 0；收回 = 反向。
+## 【布局】人物资料在左，三个抽屉可分别展开，右侧箭头始终可用。
 ##
-## 【数据纪律】与 PlayerHud / 检视面板同一套：**只读通用组件**（Body / Needs / Aging / Lineage）。
+## 【数据纪律】资料读取通用组件；背包操作只调用 Inventory 的转移方法。
 ##   本文件不认识"主角"或"猪" —— 换任何生物都能显示（只是它显示全身照需要该物种配了 art）。
 ##
 ## 【为什么全身照与部位按钮要"叠"在一起】用户要的是"点身上的手/头/腿" ——
@@ -23,7 +22,12 @@ extends Control
 
 # ---------------- 常量 ----------------
 
-const PANEL_W := 300.0            # 面板宽度
+const PROFILE_W := 300.0          # 人物资料列宽
+const DRAWER_W := 260.0
+const DRAWER_PAD := 12.0
+const DRAWER_BG := Color.BLACK
+const RAIL_W := 58.0
+const COLUMN_GAP := 8
 const MARGIN := 8.0               # 与屏幕边缘的间距
 const FONT_SIZE := 11             # 像素字体原生尺寸（与检视面板一致）
 const TITLE_SIZE := 22            # 标题用 2 倍（像素字体只有整数倍不糊）
@@ -76,7 +80,9 @@ const SEV_COLOR := {
 
 var _player: Creature = null
 
-var _panel: PanelContainer
+var _panel: Control
+var _profile_background: Panel
+var _close_overlay: Control
 var _scroll: ScrollContainer
 var _content: MarginContainer
 var _portrait: TextureRect
@@ -98,6 +104,16 @@ var _detail_lbl: Label
 var _detail_section: VBoxContainer
 var _need_rows: Array = []        # {need, bar}
 var _needs_grid: GridContainer
+var _skill_list: SkillList
+var _backpack_view: BackpackView
+var _drawer_clips: Array[Control] = []
+var _drawer_pages: Array[Control] = []
+var _drawer_buttons: Array[Button] = []
+var _drawer_tweens: Array[Tween] = []
+var _drawer_scroll: ScrollContainer
+var _drawer_columns: HBoxContainer
+var _drawer_rail_holder: Control
+var _drawer_rail: VBoxContainer
 
 var _open := false
 var _tween: Tween = null
@@ -116,6 +132,7 @@ var _detail_shown := 1.0          # 选中部位的血条显示值（同样阻�
 
 func _ready() -> void:
 	_build()
+	move_to_front.call_deferred()
 	# 自己订阅 —— 与 PlayerHud 同一套路（Main 不必记得喂这个面板）
 	EventBus.player_spawned.connect(_on_player_spawned)
 	EventBus.creature_died.connect(_on_creature_died)
@@ -181,14 +198,19 @@ func _build() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	_panel = PanelContainer.new()
+	_panel = Control.new()
 	_panel.mouse_filter = Control.MOUSE_FILTER_STOP   # 面板本体吃输入（不穿透点到世界）
-	_panel.custom_minimum_size.x = PANEL_W
+	_panel.custom_minimum_size.x = PROFILE_W
 	add_child(_panel)
+	_profile_background = Panel.new()
+	_profile_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_profile_background.add_theme_stylebox_override("panel", get_theme_stylebox("panel", "PanelContainer"))
+	_panel.add_child(_profile_background)
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.follow_focus = true
 	_panel.add_child(_scroll)
+	_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	# —— 外层边距（文字不贴面板边框）——
 	# 关闭 × 的位置**不能交给 HBox 排版**（会被标题/时钟挤到中间）；见下方 overlay 说明。
@@ -202,9 +224,72 @@ func _build() -> void:
 	get_parent().resized.connect(_fit_panel_height)
 	_content.minimum_size_changed.connect(_fit_panel_height)
 
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", COLUMN_GAP)
+	pad.add_child(columns)
 	var vb := VBoxContainer.new()
+	vb.custom_minimum_size.x = PROFILE_W - 20.0
 	vb.add_theme_constant_override("separation", 6)
-	pad.add_child(vb)
+	columns.add_child(vb)
+	_drawer_scroll = ScrollContainer.new()
+	_drawer_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_drawer_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_drawer_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	columns.add_child(_drawer_scroll)
+	_drawer_columns = HBoxContainer.new()
+	_drawer_columns.add_theme_constant_override("separation", COLUMN_GAP)
+	_drawer_columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_drawer_scroll.add_child(_drawer_columns)
+	for title in ["技能 · 熟练度", "背包", "制造"]:
+		var clip := Control.new()
+		clip.clip_contents = true
+		clip.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		_drawer_columns.add_child(clip)
+		clip.minimum_size_changed.connect(_fit_panel_height)
+		_drawer_clips.append(clip)
+		_drawer_tweens.append(null)
+		var background := ColorRect.new()
+		background.color = DRAWER_BG
+		background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		clip.add_child(background)
+		background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var page := VBoxContainer.new()
+		page.position = Vector2(DRAWER_PAD, DRAWER_PAD)
+		page.custom_minimum_size.x = DRAWER_W - DRAWER_PAD * 2.0
+		page.size.x = page.custom_minimum_size.x
+		page.add_theme_constant_override("separation", 10)
+		var heading := _label(title, 15)
+		heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		page.add_child(heading)
+		page.hide()
+		clip.add_child(page)
+		_drawer_pages.append(page)
+	_drawer_rail_holder = Control.new()
+	_drawer_rail_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_panel.add_child(_drawer_rail_holder)
+	_drawer_rail = VBoxContainer.new()
+	_drawer_rail_holder.add_child(_drawer_rail)
+	for title in ["技", "包", "造"]:
+		var tab := Button.new()
+		tab.text = title + " ›"
+		tab.flat = true
+		tab.custom_minimum_size.y = 42
+		tab.tooltip_text = {"技": "技能", "包": "背包", "造": "制造"}[title]
+		tab.pressed.connect(_toggle_drawer.bind(_drawer_buttons.size()))
+		_drawer_rail.add_child(tab)
+		_drawer_buttons.append(tab)
+	_skill_list = SkillList.new()
+	_skill_list.columns = 1
+	_skill_list.bar_segments = 22
+	_skill_list.font_size = 13
+	_skill_list.center_rows = true
+	_drawer_pages[0].add_child(_skill_list)
+	_backpack_view = BackpackView.new()
+	_drawer_pages[1].add_child(_backpack_view)
+	var craft_hint := _label("制造尚未开放", 13)
+	craft_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_drawer_pages[2].add_child(craft_hint)
 
 	# —— 标题行：名字 +（**末尾留一块空白给右上角的 ×**，不然会被压住）——
 	# 标题行同时是**拖拽把手**（问题3）：见 _gui_input 接线。
@@ -224,15 +309,11 @@ func _build() -> void:
 	head_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(head_spacer)
 
-	# —— 右上角 × 用**铺满整块面板的定位层**承载 ——
-	# ⚠ 关键坑：`PanelContainer` 会把**直接子节点**摆到内容区（受主题边距约束），
-	#   所以在 _panel 上直接挂一个锚 TOP_RIGHT 的 Button 是**没用**的 ——
-	#   实测它被放到 x=8（内容区左上），而不是右上角。
-	#   解法：中间垫一层 `Control`（PRESET_FULL_RECT），锚点才是相对**整块面板**算的。
+	# 关闭按钮相对资料底板定位，横向滚动时与资料一起移动。
 	var overlay := Control.new()
-	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE   # 只当定位参照，不吃输入
 	_panel.add_child(overlay)
+	_close_overlay = overlay
 
 	# —— 右上角关闭 ×（悬浮在内容之上）——
 	_close_btn = Button.new()
@@ -312,7 +393,7 @@ func _build() -> void:
 	_detail_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_detail_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_detail_tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_detail_tex.custom_minimum_size = Vector2(PANEL_W - 40, 150)
+	_detail_tex.custom_minimum_size = Vector2(PROFILE_W - 40, 150)
 	_detail_section.add_child(_detail_tex)
 	var drow := HBoxContainer.new()
 	drow.add_theme_constant_override("separation", 8)
@@ -324,14 +405,62 @@ func _build() -> void:
 	drow.add_child(_detail_lbl)
 	_fit_panel_height()
 
+func _toggle_drawer(index: int) -> void:
+	var page: Control = _drawer_pages[index]
+	var opening: bool = not page.visible
+	page.visible = opening
+	_drawer_buttons[index].text = ["技", "包", "造"][index] + (" ‹" if opening else " ›")
+	var tween: Tween = _drawer_tweens[index]
+	if tween != null and tween.is_valid():
+		tween.kill()
+	tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_drawer_tweens[index] = tween
+	tween.tween_property(_drawer_clips[index], "custom_minimum_size:x", DRAWER_W if opening else 0.0, 0.22)
+	tween.finished.connect(_focus_drawer.bind(index))
+
+func _position_drawer_rail() -> void:
+	if _drawer_rail == null:
+		return
+	_drawer_rail.position.x = (_drawer_rail_holder.size.x - _drawer_rail.size.x) * 0.5
+	_drawer_rail.position.y = maxf((_drawer_rail_holder.size.y - _drawer_rail.size.y) * 0.5, 0.0)
+
+func _focus_drawer(index: int) -> void:
+	if not _drawer_pages[index].visible:
+		index = -1
+		for i in _drawer_pages.size():
+			if _drawer_pages[i].visible:
+				index = i
+				break
+	_drawer_scroll.scroll_horizontal = int(_drawer_clips[index].position.x) if index >= 0 else 0
+
+func _update_profile_background() -> void:
+	_profile_background.size = Vector2(PROFILE_W + 20.0, _panel.size.y)
+	_drawer_rail_holder.position = Vector2(_profile_background.size.x - RAIL_W - 8.0, 0.0)
+	_drawer_rail_holder.size = Vector2(RAIL_W, _panel.size.y)
+	_position_drawer_rail()
+	if _close_overlay != null:
+		_close_overlay.position = _profile_background.position
+		_close_overlay.size = _profile_background.size
+
 func _fit_panel_height() -> void:
 	if _panel == null or _content == null:
 		return
 	var available: float = (get_parent() as Control).size.y - MARGIN * 2.0
 	if available <= 0.0:
 		return
-	_panel.size.x = maxf(PANEL_W, _content.get_combined_minimum_size().x + 16.0)
+	var drawer_width: float = 0.0
+	for clip in _drawer_clips:
+		drawer_width += clip.custom_minimum_size.x
+	if drawer_width > 0.0:
+		drawer_width += COLUMN_GAP * (_drawer_clips.size() - 1)
+	var max_drawer_width: float = maxf(0.0, (get_parent() as Control).size.x - MARGIN * 2.0
+		- PROFILE_W - COLUMN_GAP - 36.0)
+	_drawer_scroll.custom_minimum_size.x = minf(drawer_width, max_drawer_width)
+	_panel.size.x = minf(maxf(PROFILE_W, _content.get_combined_minimum_size().x + 16.0),
+		(get_parent() as Control).size.x - MARGIN * 2.0)
 	_panel.size.y = minf(_content.get_combined_minimum_size().y + 16.0, available)
+	_update_profile_background()
+	_position_drawer_rail.call_deferred()
 	_clamp_panel()
 
 ## 按 LAYOUT.part_layout 建热区（叠在全身照上）。
@@ -433,7 +562,7 @@ func _on_title_gui_input(ev: InputEvent) -> void:
 func _clamp_panel() -> void:
 	var vp := (get_parent() as Control).size
 	var p := _panel.global_position
-	p.x = clampf(p.x, -PANEL_W + 80.0, vp.x - 60.0)
+	p.x = clampf(p.x, -_panel.size.x + 80.0, vp.x - 60.0)
 	p.y = clampf(p.y, 0.0, maxf(vp.y - 40.0, 0.0))
 	_panel.global_position = p
 
@@ -470,8 +599,7 @@ func close_panel() -> void:
 ##   尊重用户摆的位置，不被动画抢走。
 ##
 ## 【问题3 的根因，2026-09-20 修】**收起时必须停止吃输入**。
-##   之前收起只是 `modulate.a = 0` + 把 x 推到 `PANEL_W + MARGIN (=308)` ——
-##   但面板本体宽 336，于是它**仍然占着屏幕上 x308~644 的一条竖带**，
+##   之前收起只是 `modulate.a = 0`，面板仍可能留在可点击区域，
 ##   而且是 `mouse_filter = STOP`：肉眼看不见，却把落在那一带的所有点击**全吃掉**。
 ##   ⇒ 现象就是"点了一次关了就打不开了"：那一片的猪永远点不中，
 ##     看起来就像"检视窗坏了"。修法：收起时把 `mouse_filter` 设为 IGNORE（不挡点击），
@@ -498,7 +626,7 @@ func _set_open(v: bool) -> void:
 		_tween.tween_property(_panel, "modulate:a", 0.0, SLIDE_TIME * 0.6)
 		if not _manual_pos:
 			_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
-			_tween.tween_property(_panel, "position:x", PANEL_W + MARGIN, SLIDE_TIME * 0.8)
+			_tween.tween_property(_panel, "position:x", _panel.size.x + MARGIN, SLIDE_TIME * 0.8)
 		# 动画跑完再 hide（彻底不参与绘制与输入）。用户拖过面板时不动位置，
 		# 但依然要 hide —— 否则那块"看不见的挡板"会一直留在屏幕上。
 		# ⚠ 用**独立的串行 Tween** 挂结束回调：并行 Tween 上 `chain()` 的语义易混，
@@ -517,14 +645,14 @@ func _on_close_anim_done() -> void:
 ##   若它保持 STOP，屏幕右中那条带从第一帧起就点不穿。
 func _snap_closed() -> void:
 	await get_tree().process_frame     # 等布局算完，size 才准
-	_panel.position.x = PANEL_W + MARGIN
+	_panel.position.x = _panel.size.x + MARGIN
 	_panel.modulate.a = 0.0            # 与 _set_open 的淡入对齐（否则首帧是"不透明地在屏外"）
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# 注意：**不 hide()** —— hide 之后 `_process` 里的阻尼与节点结构仍可用，
 	#   但 _ready 时 hide 会让"开局自动打开"（_on_player_spawned → open_panel）时
 	#   还得多写一次 show。这里靠 mouse_filter 已经足够不打扰输入，
 	#   而开局 open_panel() 会把 mouse_filter 复原。
-	#   但如果开局就保持"看不见却存在"，仍会绘制一份完全透明的 336×707 面板（纯浪费），
+	#   但如果开局就保持"看不见却存在"，仍会绘制一份完全透明的面板（纯浪费），
 	#   所以在 player 生成之前先 hide 掉（open_panel 会 show 回来）。
 	if not _open:
 		_panel.hide()
@@ -658,6 +786,8 @@ func _rebuild() -> void:
 			_needs_grid.add_child(cell)
 			_need_rows.append({"need": n, "bar": bar})
 			_need_shown.append(n.ratio())
+	_skill_list.bind(_player.get_component(Skills) as Skills)
+	_backpack_view.bind(_player.get_component(Inventory) as Inventory)
 	_hp_shown = _target_hp_ratio()
 	_detail_shown = 1.0
 	_detail_section.visible = false
@@ -668,6 +798,7 @@ func _rebuild() -> void:
 func _refresh() -> void:
 	if _player == null or not is_instance_valid(_player):
 		return
+	_skill_list.refresh()
 	# 信息行：性别 · 年龄 · 阶段
 	var ag := _player.get_component(Aging) as Aging
 	var lin := _player.get_component(Lineage) as Lineage

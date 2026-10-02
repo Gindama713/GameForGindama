@@ -7,6 +7,7 @@ var definition: WorldObjectDef
 var coord: Vector2i
 var integrity: int
 var growth: float = 100.0
+var dropped_by_creature: bool = false
 var _growth_updated_at: float = 0.0
 
 

@@ -32,7 +32,8 @@ func _ready() -> void:
 	_save_timer.wait_time = 0.5
 	_save_timer.timeout.connect(_save)
 	add_child(_save_timer)
-	_apply_window()
+	if not Engine.is_embedded_in_editor():
+		_apply_window()
 	get_window().size_changed.connect(_on_window_resized)
 
 
@@ -53,7 +54,7 @@ func _usable_size() -> Vector2i:
 
 
 func set_fullscreen(value: bool) -> void:
-	if fullscreen == value:
+	if Engine.is_embedded_in_editor() or fullscreen == value:
 		return
 	fullscreen = value
 	_apply_window()
@@ -62,6 +63,8 @@ func set_fullscreen(value: bool) -> void:
 
 
 func set_windowed_size(value: Vector2i) -> void:
+	if Engine.is_embedded_in_editor():
+		return
 	var usable := _usable_size()
 	if value.x < mini(960, usable.x) or value.y < mini(540, usable.y) or value.x > usable.x or value.y > usable.y:
 		return
@@ -99,7 +102,7 @@ func _apply_window() -> void:
 
 
 func _on_window_resized() -> void:
-	if _changing_window or fullscreen:
+	if Engine.is_embedded_in_editor() or _changing_window or fullscreen:
 		return
 	windowed_size = get_window().size
 	_save_timer.start()

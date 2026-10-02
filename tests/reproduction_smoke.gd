@@ -52,10 +52,18 @@ func _run() -> void:
 	var player: Creature = game.get("player") as Creature
 	if not _require(player != null, "缺少主角"):
 		return
+	var parent_skills: Skills = player.get_component(Skills) as Skills
+	parent_skills.practice(Sprint.SKILL_ID, 100.0)
 	if not _require(int(game.call("_spawn_offspring", player, player)) == 1, "出生仍被写死为猪场景"):
 		return
 	var child: Creature = game.get_node("Creatures").get_children().back() as Creature
 	if not _require(child != null and child.def == player.def and child.scene_file_path == player.scene_file_path, "后代物种未继承母体场景"):
+		return
+	var child_skills: Skills = child.get_component(Skills) as Skills
+	if not _require(child_skills != null and child_skills.level(Sprint.SKILL_ID) == 0
+			and child_skills.experience(Sprint.SKILL_ID) == 0.0
+			and absf(child_skills.attribute(&"physique") - parent_skills.attribute(&"physique")) <= 5.0,
+			"后代没有继承先天倾向，或继承了练出的技能"):
 		return
 	print("reproduction_smoke: PASS")
 	get_tree().quit()

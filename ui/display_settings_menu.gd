@@ -10,17 +10,6 @@ var _ui_scale: OptionButton
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	mouse_filter = MOUSE_FILTER_IGNORE
-	var open_button := Button.new()
-	open_button.text = "设置"
-	open_button.tooltip_text = "显示设置（Esc）"
-	open_button.set_anchors_preset(PRESET_TOP_RIGHT)
-	open_button.offset_left = -84
-	open_button.offset_right = -8
-	open_button.offset_top = 112
-	open_button.offset_bottom = 140
-	open_button.pressed.connect(_toggle)
-	add_child(open_button)
-
 	_shade = ColorRect.new()
 	_shade.color = Color(0, 0, 0, 0.58)
 	_shade.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -50,6 +39,11 @@ func _ready() -> void:
 	_mode.item_selected.connect(func(index: int) -> void: DisplaySettings.set_fullscreen(index == 1))
 	_resolution = _option_row(column, "窗口大小")
 	_resolution.item_selected.connect(_on_resolution_selected)
+	if Engine.is_embedded_in_editor():
+		var embed_hint := Label.new()
+		embed_hint.text = "编辑器嵌入运行时不能调整窗口。\n在 Godot 的「游戏」页面关闭「下次运行时嵌入游戏」，再运行。"
+		embed_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		column.add_child(embed_hint)
 	_ui_scale = _option_row(column, "UI 大小")
 	for value in DisplaySettings.UI_SCALES:
 		_ui_scale.add_item("%d%%" % int(value * 100))
@@ -78,7 +72,8 @@ func _option_row(parent: VBoxContainer, title: String) -> OptionButton:
 
 func _refresh() -> void:
 	_mode.select(1 if DisplaySettings.fullscreen else 0)
-	_resolution.disabled = DisplaySettings.fullscreen
+	_mode.disabled = Engine.is_embedded_in_editor()
+	_resolution.disabled = Engine.is_embedded_in_editor() or DisplaySettings.fullscreen
 	_resolution.clear()
 	var sizes := DisplaySettings.available_sizes()
 	for preset in sizes:

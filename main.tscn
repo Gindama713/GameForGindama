@@ -17,7 +17,7 @@
 [ext_resource type="Script" path="res://ui/sleep_fade.gd" id="15_fade"]
 [ext_resource type="Script" path="res://ui/sensation_feed.gd" id="15_vivmo"]
 [ext_resource type="Material" path="res://ui/sleep_fade.tres" id="16_fade_mat"]
-[ext_resource type="Script" path="res://ui/inventory_panel.gd" id="23_qsp4k"]
+[ext_resource type="Script" path="res://ui/hand_hud.gd" id="23_qsp4k"]
 [ext_resource type="Script" path="res://ui/display_settings_menu.gd" id="25_htxhm"]
 
 [node name="Main" type="Node2D" unique_id=1636290694]
@@ -79,7 +79,7 @@ script = ExtResource("12_panel")
 anchors_preset = 0
 script = ExtResource("15_vivmo")
 
-[node name="Inventory" type="PanelContainer" parent="UI/Canvas" unique_id=223284102]
+[node name="HandsHud" type="PanelContainer" parent="UI/Canvas" unique_id=223284102]
 layout_mode = 0
 script = ExtResource("23_qsp4k")
 
@@ -106,4 +106,4 @@ anchors_preset = 0
 mouse_filter = 2
 script = ExtResource("25_htxhm")
 
-[connection signal="drop_requested" from="UI/Canvas/Inventory" to="WorldObjects/Interaction" method="drop_hand"]
+[connection signal="drop_requested" from="UI/Canvas/HandsHud" to="WorldObjects/Interaction" method="drop_hand"]
