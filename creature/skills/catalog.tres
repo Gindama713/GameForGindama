@@ -1,94 +1,19 @@
-[gd_resource type="Resource" script_class="SkillCatalog" load_steps=15 format=3]
+[gd_resource type="Resource" script_class="SkillCatalog" load_steps=14 format=3]
 
-[ext_resource type="Script" path="res://creature/skills/skill_catalog.gd" id="1"]
-[ext_resource type="Script" path="res://creature/skills/skill_def.gd" id="2"]
-
-[sub_resource type="Resource" id="Running"]
-script = ExtResource("2")
-id = &"running"
-display_name = "跑步"
-primary_attribute = &"physique"
-secondary_attribute = &"dexterity"
-experience_per_effort = 0.25
-
-[sub_resource type="Resource" id="Swimming"]
-script = ExtResource("2")
-id = &"swimming"
-display_name = "游泳"
-primary_attribute = &"physique"
-secondary_attribute = &"dexterity"
-
-[sub_resource type="Resource" id="Strength"]
-script = ExtResource("2")
-id = &"strength"
-display_name = "力量"
-primary_attribute = &"physique"
-secondary_attribute = &"dexterity"
-
-[sub_resource type="Resource" id="Crafting"]
-script = ExtResource("2")
-id = &"crafting"
-display_name = "制作"
-primary_attribute = &"dexterity"
-secondary_attribute = &"insight"
-
-[sub_resource type="Resource" id="Gathering"]
-script = ExtResource("2")
-id = &"gathering"
-display_name = "采集"
-primary_attribute = &"perception"
-secondary_attribute = &"dexterity"
-experience_per_effort = 2.0
-
-[sub_resource type="Resource" id="Cooking"]
-script = ExtResource("2")
-id = &"cooking"
-display_name = "厨艺"
-primary_attribute = &"insight"
-secondary_attribute = &"dexterity"
-
-[sub_resource type="Resource" id="Husbandry"]
-script = ExtResource("2")
-id = &"husbandry"
-display_name = "畜牧"
-primary_attribute = &"affinity"
-secondary_attribute = &"perception"
-
-[sub_resource type="Resource" id="Medicine"]
-script = ExtResource("2")
-id = &"medicine"
-display_name = "治疗"
-primary_attribute = &"insight"
-secondary_attribute = &"perception"
-
-[sub_resource type="Resource" id="Fishing"]
-script = ExtResource("2")
-id = &"fishing"
-display_name = "钓鱼"
-primary_attribute = &"perception"
-secondary_attribute = &"dexterity"
-
-[sub_resource type="Resource" id="Mining"]
-script = ExtResource("2")
-id = &"mining"
-display_name = "挖掘"
-primary_attribute = &"physique"
-secondary_attribute = &"perception"
-
-[sub_resource type="Resource" id="Social"]
-script = ExtResource("2")
-id = &"social"
-display_name = "社交"
-primary_attribute = &"affinity"
-secondary_attribute = &"insight"
-
-[sub_resource type="Resource" id="Knowledge"]
-script = ExtResource("2")
-id = &"knowledge"
-display_name = "知识"
-primary_attribute = &"insight"
-secondary_attribute = &"perception"
+[ext_resource type="Script" path="res://creature/skills/skill_catalog.gd" id="1_cat"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_running.tres" id="s_running"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_swimming.tres" id="s_swimming"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_strength.tres" id="s_strength"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_crafting.tres" id="s_crafting"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_gathering.tres" id="s_gathering"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_cooking.tres" id="s_cooking"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_husbandry.tres" id="s_husbandry"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_medicine.tres" id="s_medicine"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_fishing.tres" id="s_fishing"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_mining.tres" id="s_mining"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_social.tres" id="s_social"]
+[ext_resource type="Resource" path="res://creature/skills/data/skill_knowledge.tres" id="s_knowledge"]
 
 [resource]
-script = ExtResource("1")
-skills = Array[SkillDef]([SubResource("Running"), SubResource("Swimming"), SubResource("Strength"), SubResource("Crafting"), SubResource("Gathering"), SubResource("Cooking"), SubResource("Husbandry"), SubResource("Medicine"), SubResource("Fishing"), SubResource("Mining"), SubResource("Social"), SubResource("Knowledge")])
+script = ExtResource("1_cat")
+skills = Array[SkillDef]([ExtResource("s_running"), ExtResource("s_swimming"), ExtResource("s_strength"), ExtResource("s_crafting"), ExtResource("s_gathering"), ExtResource("s_cooking"), ExtResource("s_husbandry"), ExtResource("s_medicine"), ExtResource("s_fishing"), ExtResource("s_mining"), ExtResource("s_social"), ExtResource("s_knowledge")])
